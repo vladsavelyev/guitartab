@@ -1,2 +1,5 @@
 .DS_Store
 .vscode
+test/results
+test/data
+__pycache__
