@@ -1,0 +1,10 @@
+torch>=2.0
+PyGuitarPro
+transformers
+tokenizers
+datasets
+huggingface_hub
+wandb
+black
+coloredlogs
+
