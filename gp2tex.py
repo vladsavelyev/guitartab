@@ -1,6 +1,8 @@
 import guitarpro as gp
-import re
 import itertools
+
+
+BASS_STRINGS = [gp.GuitarString(i, s) for i, s in enumerate([43, 38, 33, 28])]
 
 
 def find_bass_track(song: gp.Song) -> gp.Track | None:
@@ -23,12 +25,16 @@ def find_bass_track(song: gp.Song) -> gp.Track | None:
 
 def track_to_alphatex(track: gp.Track) -> str:
     header = []
-    if hasattr(track.song, "title"):
-        header.append(f'\\title "{track.song.title}"')
-    if hasattr(track.song, "subtitle"):
+    header.append(f'\\title "{track.song.title}"')
+    if track.song.subtitle:
         header.append(f'\\subtitle "{track.name}"')
-    if hasattr(track.song, "tempo"):
-        header.append(f"\\tempo {track.song.tempo}")
+    header.append(f"\\tempo {track.song.tempo}")
+    if track.channel and track.channel.instrument:
+        header.append(f"\\instument {track.channel.instrument}")
+    if track.strings:
+        header.append(f"\\strings {len(track.strings)}")
+    if track.fretCount:
+        header.append(f"\\frets {track.fretCount}")
     header.append(".")
 
     mstrs = []
@@ -153,6 +159,7 @@ def _replace_spaces(s):
 
 def alphatex_to_song(tex: str) -> gp.Song:
     song = gp.Song()
+    track = song.tracks[0]
     lines = (l.strip() for l in tex.splitlines())
     for line in itertools.takewhile(lambda l: l != ".", lines):
         if line.startswith("\\"):
@@ -175,8 +182,14 @@ def alphatex_to_song(tex: str) -> gp.Song:
                 song.__dict__[k] = v.strip('"')
             elif k == "tempo":
                 song.tempo = int(v)
+            elif k == "instrument":
+                track.channel.instrument = int(v)
+            elif k == "strings":
+                if int(v) == 4:
+                    track.strings = BASS_STRINGS
+            elif k == "frets":
+                track.fretCount = int(v)
 
-    track = song.tracks[0]
     curduration = gp.Duration(gp.Duration.quarter)
     for mstr in " ".join(lines).split(" | "):
         if not (mstr := mstr.strip()):
@@ -292,7 +305,10 @@ def alphatex_to_song(tex: str) -> gp.Song:
 #     raise ValueError("No bass track found")
 # else:
 #     print(f"Found bass track: {bass.name} (number {bass.number})")
-# print(track_to_alphatex(bass))
+# tex = track_to_alphatex(bass)
+# print(tex)
+# song2 = alphatex_to_song(tex)
+# gp.write(song2, "test/results/metallica2.gp4")
 
 
 # tex = """
