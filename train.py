@@ -75,7 +75,7 @@ else:
 
 # %% PREP DATASET
 
-dataset = dataset['train'].train_test_split(test_size=10, seed=42)
+dataset = dataset["train"].train_test_split(test_size=10, seed=42)
 
 # Wrap novel chapters with BOS and EOS tokens (tokenizer doesn't do that even
 # if add_special_tokens is True, see https://github.com/huggingface/transformers/issues/3311)
@@ -191,6 +191,7 @@ generator = pipeline(
 out_dir = Path("output")
 out_dir.mkdir(exist_ok=True)
 
+
 class MyCallback(TrainerCallback):
     def on_evaluate(self, args, state, control, **kwargs):
         if metrics := kwargs.get("metrics"):
@@ -207,12 +208,12 @@ class MyCallback(TrainerCallback):
             try:
                 song = alphatex_to_song(tex)
             except:
-                print('Could not parse the tex to GP')
+                print("Could not parse the tex to GP")
             else:
                 try:
                     gp.write(song, str(out_dir / f"{state.global_step}.gp"))
                 except:
-                    print('Could not write the GP file')
+                    print("Could not write the GP file")
 
 
 trainer = Trainer(
