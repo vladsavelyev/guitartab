@@ -7,4 +7,5 @@ huggingface_hub
 wandb
 black
 coloredlogs
-
+transliterate
+pyguitarpro
