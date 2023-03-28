@@ -1,5 +1,9 @@
 import guitarpro as gp
 import itertools
+from tqdm import tqdm
+from pathlib import Path
+import sys
+import re
 
 
 BASS_STRINGS = [gp.GuitarString(i, s) for i, s in enumerate([43, 38, 33, 28])]
@@ -297,6 +301,41 @@ def alphatex_to_song(tex: str) -> gp.Song:
                         i += 1
         song.newMeasure()
     return song
+
+
+def convert_all(src_path: Path, dst_path: Path, find_track_fn):
+    paths = list(src_path.glob("**/*.gp[3-5]"))
+    print(f"Found {len(paths)} GuitarPro files")
+
+    dst_path.mkdir()
+
+    for path in tqdm(paths):
+        song_name = path.stem
+        song_name = re.sub(r"\(\d+\)", "", song_name).strip()
+
+        out_path = dst_path / f"{song_name}.tex"
+        if out_path.exists():
+            continue
+        try:
+            song = gp.parse(path)
+        except gp.GPException:
+            print(f"   failed to parse {path}")
+            continue
+        if bass := find_track_fn(song):
+            tex = track_to_alphatex(bass)
+            with out_path.open("w") as f:
+                f.write(tex)
+        else:
+            print(f"   no bass track found in {path}")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 2:
+        convert_all(
+            src_path=Path(sys.argv[1]),
+            dst_path=Path(sys.argv[2]),
+            find_track_fn=find_bass_track,
+        )
 
 
 # song = gp.parse("test/data/metallica.gp4")
