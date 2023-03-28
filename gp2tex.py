@@ -1,3 +1,4 @@
+from typing import Optional
 import guitarpro as gp
 import itertools
 from tqdm import tqdm
@@ -9,7 +10,7 @@ import re
 BASS_STRINGS = [gp.GuitarString(i, s) for i, s in enumerate([43, 38, 33, 28])]
 
 
-def find_bass_track(song: gp.Song) -> gp.Track | None:
+def find_bass_track(song: gp.Song) -> Optional[gp.Track]:
     N_FRETS = 24
     N_STRINGS = 4  # base; 6 for standard guitar
     INSTRUMENTS = range(32, 40)  # range(24, 31) for standard guitar
