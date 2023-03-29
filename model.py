@@ -3,6 +3,7 @@ from transformers import (
     AutoConfig,
     AutoTokenizer,
     AutoModelForCausalLM,
+    GenerationConfig,
     pipeline,
 )
 from datasets import load_dataset
@@ -22,7 +23,7 @@ def get_dataset(streaming=False, prep=False):
     tokenizer = get_tokenizer()
     model = get_model()
 
-    dataset = dataset["train"].train_test_split(test_size=10, seed=42)
+    dataset["test"] = dataset.take(10)
 
     # Wrap novel chapters with BOS and EOS tokens (tokenizer doesn't do that even
     # if add_special_tokens is True, see https://github.com/huggingface/transformers/issues/3311)
@@ -83,18 +84,27 @@ def get_model(from_scratch=False):
 
 
 def get_generator(device):
-    model = get_model()
     tokenizer = get_tokenizer()
+    model = get_model()
+
+    try:
+        gconf = GenerationConfig.from_pretrained(MODEL, "generation_config.json")
+    except:
+        gconf = GenerationConfig(
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id,
+            top_k=50,
+            top_p=0.95,
+            do_sample=True,
+            num_return_sequences=1,
+            max_length=200,
+        )
+        gconf.push_to_hub(MODEL, "generation_config.json")
+
     return pipeline(
         "text-generation",
         model=model,
         tokenizer=tokenizer,
-        eos_token_id=tokenizer.eos_token_id,
-        pad_token_id=tokenizer.pad_token_id,
         device=device,
-        top_k=50,
-        top_p=0.95,
-        do_sample=True,
-        num_return_sequences=1,
-        max_length=200,
+        generation_config=gconf,
     )
