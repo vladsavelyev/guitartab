@@ -53,3 +53,10 @@ def test_overfit(tmp_path):
     print()
     print("Generated:")
     print(generated_tex)
+
+
+if __name__ == "__main__":
+    import os
+
+    os.mkdir("tmp")
+    test_overfit("tmp")

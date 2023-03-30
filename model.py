@@ -28,12 +28,12 @@ def get_dataset(streaming=False, prep=False):
     # Wrap novel chapters with BOS and EOS tokens (tokenizer doesn't do that even
     # if add_special_tokens is True, see https://github.com/huggingface/transformers/issues/3311)
     dataset = dataset.map(
-        lambda x: {"text": f'{tokenizer.bos_token}{x["text"]}{tokenizer.eos_token}'}
+        lambda x: {"tex": f'{tokenizer.bos_token}{x["tex"]}{tokenizer.eos_token}'}
     )
 
     def _tokenize(batch: dict[str, list]):
         ids = tokenizer(
-            batch["text"],
+            batch["tex"],
             max_length=model.config.n_ctx,
             truncation=True,  # because of the option below, it will chunk
             return_overflowing_tokens=True,  # ...tokens, not trancate
@@ -41,12 +41,8 @@ def get_dataset(streaming=False, prep=False):
             stride=int(model.config.n_ctx * 0.2),
         )["input_ids"]
         return {"input_ids": ids}
-    
-    from datasets import IterableDataset
 
-    dataset = dataset.map(
-        _tokenize, batched=True, remove_columns=dataset['train'].column_names
-    )
+    dataset = dataset.map(_tokenize, batched=True)
     return dataset
 
 
@@ -56,7 +52,7 @@ def get_tokenizer(from_scratch=False):
     dataset = get_dataset()
     base_tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
     tokenizer = base_tokenizer.train_new_from_iterator(
-        (e["text"] for e in dataset["train"]),
+        (e["tex"] for e in dataset["train"]),
         vocab_size=500,
         new_special_tokens=["<|pad|>"],
     )
