@@ -6,8 +6,8 @@ import transliterate
 def _fix_name(name) -> str:
     if re.search(r"[а-яА-Я]", name):
         name = transliterate.translit(name, "ru", reversed=True)
-        name = re.sub(r"\'", "", name)
     name = re.sub(r"\s+", "_", name)  # replace whitespaces
+    name = re.sub(r"\'", "-", name)  # replace apostrophes
     return name
 
 

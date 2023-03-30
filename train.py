@@ -4,12 +4,13 @@ import os
 import math
 from pathlib import Path
 
-import datasets, transformers
+import datasets, transformers, evaluate
 from transformers import (
     Trainer,
     TrainingArguments,
     TrainerCallback,
     DataCollatorForLanguageModeling,
+    EvalPrediction,
     pipeline,
 )
 from transformers.trainer_utils import get_last_checkpoint
@@ -93,6 +94,13 @@ generator = get_generator(training_args.device)
 out_dir = Path("output")
 out_dir.mkdir(exist_ok=True)
 
+
+def compute_metrics(eval_preds: EvalPrediction):
+    perplexity = evaluate.load("perplexity", module_type="metric")
+    pred = eval_preds.predictions.argmax(axis=-1)
+    return perplexity.compute(predictions=pred, model_id="gpt2")
+
+
 class MyCallback(TrainerCallback):
     def on_evaluate(self, args, state, control, **kwargs):
         if metrics := kwargs.get("metrics"):
@@ -127,6 +135,7 @@ trainer = Trainer(
     eval_dataset=dataset["test"],
     callbacks=[MyCallback],
     args=training_args,
+    compute_metrics=compute_metrics,
 )
 
 

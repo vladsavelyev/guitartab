@@ -1,8 +1,8 @@
 torch>=2.0
-PyGuitarPro
 transformers
 tokenizers
 datasets
+evaluate
 huggingface_hub
 wandb
 black

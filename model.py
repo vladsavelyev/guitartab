@@ -23,7 +23,7 @@ def get_dataset(streaming=False, prep=False):
     tokenizer = get_tokenizer()
     model = get_model()
 
-    dataset["test"] = dataset.take(10)
+    dataset["test"] = dataset["train"].take(10)
 
     # Wrap novel chapters with BOS and EOS tokens (tokenizer doesn't do that even
     # if add_special_tokens is True, see https://github.com/huggingface/transformers/issues/3311)
@@ -41,9 +41,11 @@ def get_dataset(streaming=False, prep=False):
             stride=int(model.config.n_ctx * 0.2),
         )["input_ids"]
         return {"input_ids": ids}
+    
+    from datasets import IterableDataset
 
     dataset = dataset.map(
-        _tokenize, batched=True, remove_columns=dataset.column_names["train"]
+        _tokenize, batched=True, remove_columns=dataset['train'].column_names
     )
     return dataset
 

@@ -56,3 +56,19 @@ def test_repeated():
 3.3*4 | 4.3*4
 """
     )
+
+
+def test_multitrack():
+    _test_conversion(
+        """
+\\title "My Song"
+\\tempo 90
+.
+\\track "First Track"
+\\instrument 42
+1.1 2.1 3.1 4.1 |
+\\track
+\\tuning A1 D2 A2 D3 G3 B3 E4
+4.1 3.1 2.1 1.1 |
+"""
+    )

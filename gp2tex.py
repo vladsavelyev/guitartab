@@ -1,4 +1,5 @@
-from typing import Optional
+from collections import defaultdict
+from typing import List, Optional
 import guitarpro as gp
 import itertools
 from tqdm import tqdm
@@ -7,44 +8,86 @@ import sys
 import re
 
 
-BASS_STRINGS = [gp.GuitarString(i, s) for i, s in enumerate([43, 38, 33, 28])]
+# BASS_STRINGS = [gp.GuitarString(i, s) for i, s in enumerate([43, 38, 33, 28])]
+# Octave * 12 + NoteValue
+# 4   9  2  4
 
 
-def find_bass_track(song: gp.Song) -> Optional[gp.Track]:
-    N_FRETS = 24
-    N_STRINGS = 4  # base; 6 for standard guitar
-    INSTRUMENTS = range(32, 40)  # range(24, 31) for standard guitar
+NOTES = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
 
+
+def text_for_tuning(tuning: int, include_octave=False):
+    """
+    Convert tuning to text representation
+    :param tuning: tuning in format octave * 12 + note
+    :param include_octave: whether to include octave in the result
+    :return: text representation of the tuning
+
+    >>> text_for_tuning(48)
+    'C'
+    >>> text_for_tuning(48, include_octave=True)
+    'C4'
+    >>> text_for_tuning(49)
+    'Db'
+    >>> text_for_tuning(49, include_octave=True)
+    'Db4'
+    """
+    octave = tuning // 12
+    note = tuning % 12
+    result = NOTES[note]
+    if include_octave:
+        result += str(octave - 1)
+    return result
+
+
+def parse_tuning(tuning: str) -> int:
+    """
+    Parse tuning from text representation
+    :param tuning: text representation of the tuning
+    :return: tuning in format octave * 12 + note
+
+    >>> parse_tuning("C")
+    48
+    >>> parse_tuning("Db4")
+    49
+    >>> parse_tuning("Db")
+    49
+    """
+    octave = 4
+    note = 0
+    if tuning[-1].isdigit():
+        octave = int(tuning[-1])
+        tuning = tuning[:-1]
+    note = NOTES.index(tuning)
+    return octave * 12 + note
+
+
+def song_to_alphatex(song: gp.Song) -> str:
+    lines = []
+    lines.append(f'\\title "{song.title}"')
+    if song.subtitle:
+        lines.append(f'\\subtitle "{song.subtitle}"')
+    lines.append(f"\\tempo {song.tempo}")
+    lines.append(".")
     for track in song.tracks:
-        if all(
-            [
-                track.settings.tablature,
-                len(track.strings) == N_STRINGS,
-                track.fretCount == N_FRETS,
-                track.channel.instrument in INSTRUMENTS,
+        lines.append(f'\\track')
+        if track.channel and track.channel.instrument:
+            lines.append(f"\\instument {track.channel.instrument}")
+        if track.strings:
+            tuning = [
+                text_for_tuning(s.value, include_octave=True) for s in track.strings
             ]
-        ):
-            return track
-    return None
+            lines.append(f"\\tuning {' '.join(tuning)}")
+        if track.fretCount:
+            lines.append(f"\\frets {track.fretCount}")
+        lines.append(_measures_to_str(track.measures))
+    return "\n".join(lines)
 
 
-def track_to_alphatex(track: gp.Track) -> str:
-    header = []
-    header.append(f'\\title "{track.song.title}"')
-    if track.song.subtitle:
-        header.append(f'\\subtitle "{track.name}"')
-    header.append(f"\\tempo {track.song.tempo}")
-    if track.channel and track.channel.instrument:
-        header.append(f"\\instument {track.channel.instrument}")
-    if track.strings:
-        header.append(f"\\strings {len(track.strings)}")
-    if track.fretCount:
-        header.append(f"\\frets {track.fretCount}")
-    header.append(".")
-
+def _measures_to_str(measures: List[gp.Measure]) -> str:
     mstrs = []
     curduration = None
-    for measure in track.measures:
+    for measure in measures:
         mstr = ""
         beats = measure.voices[0].beats
         if beats and beats[0].duration != curduration:
@@ -104,7 +147,7 @@ def track_to_alphatex(track: gp.Track) -> str:
                     ef.append("f")
                 if beat.duration.tuplet.enters != 1:
                     ef.append(f"tu {beat.duration.tuplet.enters}")
-                # Finished parsing effects
+                    # Finished parsing effects
                 if ef:
                     nstrs[-1] += "{" + " ".join(ef) + "}"
                 if beat.duration != curduration:
@@ -118,7 +161,7 @@ def track_to_alphatex(track: gp.Track) -> str:
             mstr += bstr + " "
         if mstr := mstr.strip():
             mstrs.append(mstr)
-    return "\n".join(header) + "\n" + " | \n".join(mstrs)
+    return " | \n".join(mstrs)
 
 
 def _replace_spaces(s):
@@ -164,39 +207,71 @@ def _replace_spaces(s):
 
 def alphatex_to_song(tex: str) -> gp.Song:
     song = gp.Song()
-    track = song.tracks[0]
-    lines = (l.strip() for l in tex.splitlines())
+
+    def _parse_track_header(k, v):
+        if k == "instrument":
+            song.tracks[-1].channel.instrument = int(v)
+        elif k == "tuning":
+            song.tracks[-1].strings = [
+                gp.GuitarString(i, parse_tuning(v)) for i, v in enumerate(v.split(" "))
+            ]
+        elif k == "frets":
+            song.tracks[-1].fretCount = int(v)
+
+    lines = (l.strip() for l in tex.splitlines() if l.strip())
     for line in itertools.takewhile(lambda l: l != ".", lines):
+        assert line.startswith("\\")
+        line = line.lstrip("\\")
+        kv = line.split(" ", 1)
+        if len(kv) == 1:
+            continue
+        k, v = kv
+        if k in [
+            "title",
+            "subtitle",
+            "artist",
+            "album",
+            "words",
+            "music",
+            "copyright",
+            "tab",
+            "instructions",
+        ]:
+            song.__dict__[k] = v.strip('"').strip("'")
+        elif k == "tempo":
+            song.tempo = int(v)
+        else:
+            _parse_track_header(k, v)
+
+    track_lines = []
+    for line in lines:
         if line.startswith("\\"):
             line = line.lstrip("\\")
             kv = line.split(" ", 1)
-            if len(kv) == 1:
-                continue
-            k, v = kv
-            if k in [
-                "title",
-                "subtitle",
-                "artist",
-                "album",
-                "words",
-                "music",
-                "copyright",
-                "tab",
-                "instructions",
-            ]:
-                song.__dict__[k] = v.strip('"')
-            elif k == "tempo":
-                song.tempo = int(v)
-            elif k == "instrument":
-                track.channel.instrument = int(v)
-            elif k == "strings":
-                if int(v) == 4:
-                    track.strings = BASS_STRINGS
-            elif k == "frets":
-                track.fretCount = int(v)
+            if len(kv) == 2:
+                k = kv[0]
+                v = kv[1].strip('"').strip("'")
+            else:
+                k = kv[0]
+                v = None
+            if k == "track":
+                if track_lines:
+                    _parse_track_lines(song.tracks[-1], track_lines)
+                    track_lines = []
+                    song.tracks.append(gp.Track(song, number=len(song.tracks) + 1))
+                song.tracks[-1].name = v if v else f"Track {song.tracks[-1].number}"
+            else:
+                _parse_track_header(k, v)
+        else:
+            track_lines.append(line)
+    if track_lines:
+        _parse_track_lines(song.tracks[-1], track_lines)
+    return song
 
+
+def _parse_track_lines(track: gp.Track, lines: List[str]):
     curduration = gp.Duration(gp.Duration.quarter)
-    for mstr in " ".join(lines).split(" | "):
+    for mstr in " ".join(lines).strip("|").split(" | "):
         if not (mstr := mstr.strip()):
             continue
         # Fix up so we can just split beats by space
@@ -236,107 +311,75 @@ def alphatex_to_song(tex: str) -> gp.Song:
                 beat.notes.append(note)
                 if "{" in string_and_ef:
                     ef = string_and_ef.split("{")[1][:-1].strip("_").split("_")
-                    i = 0
-                    while i < len(ef):
-                        if ef[i] == "d":
-                            note.beat.duration.isDotted = True
-                        elif ef[i] == "v":
-                            note.effect.vibrato = True
-                        elif ef[i] == "h":
-                            note.effect.hammer = True
-                        elif ef[i] in ["b", "be"]:
-                            values = [int(v) for v in ef[i + 1].split("-")]
-                            if ef[i] == "b":
-                                stride = gp.BendEffect.maxPosition // (len(values) - 1)
-                                positions = [p * stride for p in range(len(values))]
-                                note.effect.bend = gp.BendEffect(
-                                    points=[
-                                        gp.BendPoint(position=p, value=v)
-                                        for p, v in zip(positions, values)
-                                    ]
-                                )
-                            else:
-                                note.effect.bend = gp.BendEffect(
-                                    points=[
-                                        gp.BendPoint(
-                                            position=values[p * 2],
-                                            value=values[p * 2 + 1],
-                                        )
-                                        for p in range(len(values) // 2)
-                                    ],
-                                )
-                            i += 1
-                        elif ef[i] == "g":
-                            note.effect.ghostNote = (True,)
-                        elif ef[i] == "x":
-                            note.type = gp.NoteType.dead
-                        elif ef[i] == "r":
-                            note.type = gp.NoteType.rest
-                        elif ef[i] in ["-", "t"]:
-                            note.type = gp.NoteType.tie
-                        elif ef[i] == "lr":
-                            note.effect.letRing = True
-                        elif ef[i] == "st":
-                            note.effect.staccato = True
-                        elif ef[i] == "pm":
-                            note.effect.palmMute = True
-                        elif ef[i] == "nh":
-                            note.effect.harmonic = gp.NaturalHarmonic()
-                        elif ef[i] == "ah":
-                            note.effect.harmonic = gp.ArtificialHarmonic()
-                        elif ef[i] == "th":
-                            note.effect.harmonic = gp.TappedHarmonic()
-                        elif ef[i] == "ph":
-                            note.effect.harmonic = gp.PinchHarmonic()
-                        elif ef[i] == "sh":
-                            note.effect.harmonic = gp.SemiHarmonic()
-                        elif ef[i] == "tr":
-                            note.effect.trill = gp.TrillEffect()
-                        elif ef[i] == "f":
-                            note.beat.effect.fadeIn = True
-                        elif ef[i] == "tu":
-                            enters = int(ef[i + 1])
-                            times = dict(gp.Tuplet.supportedTuplets)[enters]
-                            note.beat.duration.tuplet = gp.Tuplet(enters, times)
-                            i += 1
-                        i += 1
-        song.newMeasure()
-    return song
+                    _parse_effects(note, ef)
+        track.measures.append(gp.Measure(track, gp.MeasureHeader()))
 
 
-def convert_all(src_path: Path, dst_path: Path, find_track_fn):
-    paths = list(src_path.glob("**/*.gp[3-5]"))
-    print(f"Found {len(paths)} GuitarPro files")
-
-    dst_path.mkdir()
-
-    for path in tqdm(paths):
-        song_name = path.stem
-        song_name = re.sub(r"\(\d+\)", "", song_name).strip()
-
-        out_path = dst_path / f"{song_name}.tex"
-        if out_path.exists():
-            continue
-        try:
-            song = gp.parse(path)
-        except gp.GPException:
-            print(f"   failed to parse {path}")
-            continue
-        if bass := find_track_fn(song):
-            tex = track_to_alphatex(bass)
-            with out_path.open("w") as f:
-                f.write(tex)
-        else:
-            print(f"   no bass track found in {path}")
-
-
-if __name__ == "__main__":
-    if len(sys.argv) > 2:
-        convert_all(
-            src_path=Path(sys.argv[1]),
-            dst_path=Path(sys.argv[2]),
-            find_track_fn=find_bass_track,
-        )
+def _parse_effects(note, ef: List[str]):
+    i = 0
+    while i < len(ef):
+        if ef[i] == "d":
+            note.beat.duration.isDotted = True
+        elif ef[i] == "v":
+            note.effect.vibrato = True
+        elif ef[i] == "h":
+            note.effect.hammer = True
+        elif ef[i] in ["b", "be"]:
+            values = [int(v) for v in ef[i + 1].split("-")]
+            if ef[i] == "b":
+                stride = gp.BendEffect.maxPosition // (len(values) - 1)
+                positions = [p * stride for p in range(len(values))]
+                note.effect.bend = gp.BendEffect(
+                    points=[
+                        gp.BendPoint(position=p, value=v)
+                        for p, v in zip(positions, values)
+                    ]
+                )
+            else:
+                note.effect.bend = gp.BendEffect(
+                    points=[
+                        gp.BendPoint(
+                            position=values[p * 2],
+                            value=values[p * 2 + 1],
+                        )
+                        for p in range(len(values) // 2)
+                    ],
+                )
+            i += 1
+        elif ef[i] == "g":
+            note.effect.ghostNote = (True,)
+        elif ef[i] == "x":
+            note.type = gp.NoteType.dead
+        elif ef[i] == "r":
+            note.type = gp.NoteType.rest
+        elif ef[i] in ["-", "t"]:
+            note.type = gp.NoteType.tie
+        elif ef[i] == "lr":
+            note.effect.letRing = True
+        elif ef[i] == "st":
+            note.effect.staccato = True
+        elif ef[i] == "pm":
+            note.effect.palmMute = True
+        elif ef[i] == "nh":
+            note.effect.harmonic = gp.NaturalHarmonic()
+        elif ef[i] == "ah":
+            note.effect.harmonic = gp.ArtificialHarmonic()
+        elif ef[i] == "th":
+            note.effect.harmonic = gp.TappedHarmonic()
+        elif ef[i] == "ph":
+            note.effect.harmonic = gp.PinchHarmonic()
+        elif ef[i] == "sh":
+            note.effect.harmonic = gp.SemiHarmonic()
+        elif ef[i] == "tr":
+            note.effect.trill = gp.TrillEffect()
+        elif ef[i] == "f":
+            note.beat.effect.fadeIn = True
+        elif ef[i] == "tu":
+            enters = int(ef[i + 1])
+            times = dict(gp.Tuplet.supportedTuplets)[enters]
+            note.beat.duration.tuplet = gp.Tuplet(enters, times)
+            i += 1
+        i += 1
 
 
 # song = gp.parse("test/data/metallica.gp4")
@@ -351,23 +394,20 @@ if __name__ == "__main__":
 # gp.write(song2, "test/results/metallica2.gp4")
 
 
-# tex = """
-# \\title "Some chords"
+# tex = """\
+# \\title "My Song"
+# \\tempo 90
 # .
-# (0.3{v h} 0.4{b (0 4)}).4 (3.3 3.4).4 (5.3 5.4).4 r.8 (0.3 0.4).8 |
-# r.8 (3.3 3.4).8 r.8 (6.3 6.4).8 (5.3 5.4).4 r.4 |
-# (0.3 0.4).4 (3.3 3.4).4 (5.3 5.4).4 r.8 (3.3 3.4).8 |
-# r.8 (0.3 0.4).8
+# \\track "First Track"
+# \\instrument 42
+# 1.1 2.1 3.1 4.1 |
+# \\track
+# \\tuning A1 D2 A2 D3 G3 B3 E4
+# 4.1 3.1 2.1 1.1 |
 # """
 
-# # tex = """
-# # \\title "Repeated notes"
-# # .
-# # 3.3*4 | 4.3*4
-# # """
-
 # song = alphatex_to_song(tex)
-# tex2 = track_to_alphatex(song.tracks[0])
+# tex2 = song_to_alphatex(song)
 # print("Before:")
 # print(tex)
 # print()
