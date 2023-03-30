@@ -23,7 +23,10 @@ def get_dataset(streaming=False, prep=False):
     tokenizer = get_tokenizer()
     model = get_model()
 
-    dataset["test"] = dataset["train"].take(10)
+    if streaming:
+        dataset["test"] = dataset["train"].take(10)
+    else:
+        dataset = dataset["train"].train_test_split(test_size=10)
 
     # Wrap novel chapters with BOS and EOS tokens (tokenizer doesn't do that even
     # if add_special_tokens is True, see https://github.com/huggingface/transformers/issues/3311)
