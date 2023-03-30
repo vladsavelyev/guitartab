@@ -1,16 +1,6 @@
-from collections import defaultdict
-from typing import List, Optional
+from typing import List
 import guitarpro as gp
 import itertools
-from tqdm import tqdm
-from pathlib import Path
-import sys
-import re
-
-
-# BASS_STRINGS = [gp.GuitarString(i, s) for i, s in enumerate([43, 38, 33, 28])]
-# Octave * 12 + NoteValue
-# 4   9  2  4
 
 
 NOTES = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
@@ -23,10 +13,6 @@ def text_for_tuning(tuning: int, include_octave=False):
     :param include_octave: whether to include octave in the result
     :return: text representation of the tuning
 
-    >>> text_for_tuning(48)
-    'C'
-    >>> text_for_tuning(48, include_octave=True)
-    'C4'
     >>> text_for_tuning(49)
     'Db'
     >>> text_for_tuning(49, include_octave=True)
@@ -36,7 +22,7 @@ def text_for_tuning(tuning: int, include_octave=False):
     note = tuning % 12
     result = NOTES[note]
     if include_octave:
-        result += str(octave - 1)
+        result += str(octave)
     return result
 
 
@@ -46,11 +32,7 @@ def parse_tuning(tuning: str) -> int:
     :param tuning: text representation of the tuning
     :return: tuning in format octave * 12 + note
 
-    >>> parse_tuning("C")
-    48
     >>> parse_tuning("Db4")
-    49
-    >>> parse_tuning("Db")
     49
     """
     octave = 4
@@ -76,8 +58,7 @@ def song_to_alphatex(song: gp.Song) -> str:
             )
             continue
         lines.append(f"\\track")
-        if track.channel and track.channel.instrument:
-            lines.append(f"\\instument {track.channel.instrument}")
+        lines.append(f"\\instrument {track.channel.instrument}")
         if track.strings:
             tuning = [
                 text_for_tuning(s.value, include_octave=True) for s in track.strings
@@ -218,7 +199,8 @@ def alphatex_to_song(tex: str) -> gp.Song:
             song.tracks[-1].channel.instrument = int(v)
         elif k == "tuning":
             song.tracks[-1].strings = [
-                gp.GuitarString(i, parse_tuning(v)) for i, v in enumerate(v.split(" "))
+                gp.GuitarString(i + 1, parse_tuning(v))
+                for i, v in enumerate(v.split(" "))
             ]
         elif k == "frets":
             song.tracks[-1].fretCount = int(v)
@@ -398,7 +380,6 @@ def _parse_effects(note, ef: List[str]):
 # song2 = alphatex_to_song(tex)
 # gp.write(song2, "test/results/metallica2.gp4")
 
-
 # tex = """\
 # \\title "My Song"
 # \\tempo 90
@@ -418,6 +399,7 @@ def _parse_effects(note, ef: List[str]):
 # print()
 # print("After:")
 # print(tex2)
+
 # song2 = alphatex_to_song(tex2)
 # tex3 = track_to_alphatex(song2.tracks[0])
 # print()

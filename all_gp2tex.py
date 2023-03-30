@@ -1,7 +1,14 @@
+"""
+Convert all GP files in a directory to AlphaTex.
+"""
+
+import re
 from pathlib import Path
+import asyncio
+
 import guitarpro as gp
 from tqdm.asyncio import tqdm_asyncio
-import re
+
 from gp2tex import song_to_alphatex
 
 
@@ -11,10 +18,6 @@ dst_path.mkdir(exist_ok=True)
 
 paths = list(src_path.glob("**/*.gp[3-5]"))
 print(f"Found {len(paths)} GuitarPro files")
-
-
-import asyncio
-from multiprocessing import Pool
 
 
 async def convert_file(path: Path):

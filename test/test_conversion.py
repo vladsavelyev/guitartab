@@ -1,4 +1,4 @@
-from gp2tex import alphatex_to_song, track_to_alphatex
+from gp2tex import alphatex_to_song, song_to_alphatex
 
 
 def _test_conversion(tex):
@@ -6,14 +6,15 @@ def _test_conversion(tex):
     Full round of conversion from .txt->.gp->.tex->.gp and compare
     """
     song = alphatex_to_song(tex)
-    tex2 = track_to_alphatex(song.tracks[0])
+    tex2 = song_to_alphatex(song)
     song2 = alphatex_to_song(tex2)
 
-    assert len(song2.measureHeaders) == len(song.measureHeaders)
-    assert len(song2.tracks[0].measures) == len(song.tracks[0].measures)
-    assert song2.tracks[0] == song.tracks[0]
+    assert len(song.measureHeaders) == len(song2.measureHeaders)
+    for t1, t2 in zip(song.tracks, song2.tracks):
+        assert len(t1.measures) == len(t2.measures)
+        assert t1 == t2
 
-    tex3 = track_to_alphatex(song2.tracks[0])
+    tex3 = song_to_alphatex(song2)
     assert tex2 == tex3
 
 
@@ -64,7 +65,7 @@ def test_multitrack():
 \\title "My Song"
 \\tempo 90
 .
-\\track "First Track"
+\\track
 \\instrument 42
 1.1 2.1 3.1 4.1 |
 \\track

@@ -14,7 +14,7 @@ def test_overfit(tmp_path):
     """
     model = get_model()
     tokenizer = get_tokenizer()
-    dataset = get_dataset(prep=True)
+    dataset = get_dataset(prep=True, streaming=True)
 
     trainer = Trainer(
         model=model,

@@ -1,3 +1,9 @@
+"""
+In a nested directory, rename all subdirs and files that have cyrillic characters 
+in them to latin ones, and also replace spaces and apostrophes with underscores 
+and dashes respectively.
+"""
+
 import os
 import re
 import transliterate
@@ -29,5 +35,5 @@ def transliterate_file_names(directory):
             transliterate_file_names(path)
 
 
-root_directory = "/Users/vlad/[archive] Google Drive/PlayMusic/tabs"
-transliterate_file_names(root_directory)
+root_dir = "/Users/vlad/ArchivedGoogleDrive/PlayMusic/tabs"
+transliterate_file_names(root_dir)
