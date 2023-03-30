@@ -70,7 +70,12 @@ def song_to_alphatex(song: gp.Song) -> str:
     lines.append(f"\\tempo {song.tempo}")
     lines.append(".")
     for track in song.tracks:
-        lines.append(f'\\track')
+        if not track.channel or not track.channel.instrument:
+            print(
+                f"WARNING: skipping track without instrument: #{track.number} {track.name}"
+            )
+            continue
+        lines.append(f"\\track")
         if track.channel and track.channel.instrument:
             lines.append(f"\\instument {track.channel.instrument}")
         if track.strings:
