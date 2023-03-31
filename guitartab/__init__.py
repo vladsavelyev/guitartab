@@ -15,6 +15,12 @@ FROM_SCRATCH = False
 STREAMING = True
 
 
+dataset = None
+tokenizer = None
+model = None
+generation_config = None
+
+
 print(f"Loading dataset from remote repo {DATASET}")
 dataset = load_dataset(DATASET, streaming=STREAMING)
 
