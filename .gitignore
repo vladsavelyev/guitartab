@@ -3,3 +3,4 @@
 test/results
 test/data
 __pycache__
+*.egg-info

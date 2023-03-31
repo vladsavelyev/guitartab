@@ -19,7 +19,7 @@ import coloredlogs
 import guitarpro as gp
 
 from gp2tex import alphatex_to_song
-from model import get_model, get_tokenizer, get_dataset, get_generator, MODEL
+from guitartab.model import model, tokenizer, dataset, generation_config, MODEL
 
 
 coloredlogs.install(level="info")
@@ -36,11 +36,6 @@ if push_to_hub and not token:
     raise ValueError(
         "push_to_hub is set to True, but HUB_TOKEN environment variable is not set"
     )
-
-model = get_model()
-tokenizer = get_tokenizer()
-dataset = get_dataset(prep=True)
-
 
 # %% SETUP TRAINER
 
@@ -89,7 +84,14 @@ else:
         per_device_eval_batch_size=1,
     )
 
-generator = get_generator(training_args.device)
+
+generator = pipeline(
+    "text-generation",
+    model=model,
+    tokenizer=tokenizer,
+    device=training_args.device,
+    generation_config=generation_config,
+)
 
 out_dir = Path("output")
 out_dir.mkdir(exist_ok=True)
