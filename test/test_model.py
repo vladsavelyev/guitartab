@@ -4,7 +4,6 @@ from transformers import (
     DataCollatorForLanguageModeling,
     AutoTokenizer,
     AutoModelForCausalLM,
-    GenerationConfig,
 )
 
 from datasets import Dataset
@@ -66,14 +65,10 @@ def test_overfit(tmp_path):
     )
     trainer.train()
 
-    generation_config = GenerationConfig.from_pretrained(
-        MODEL, "generation_config.json"
-    )
     training_tokens = dataset[0]["input_ids"]
     training_tex = tokenizer.decode(training_tokens)
     generated_tex = tokenizer.decode(
         model.generate(
-            generation_config=generation_config,
             max_length=len(training_tokens),
             do_sample=False,
         )[0].tolist()
