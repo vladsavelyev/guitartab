@@ -51,6 +51,10 @@ dataset = datasets.load_dataset(DATASET)
 
 if FROM_SCRATCH:
     base_tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
+    # training on small examples would fail without a padding token
+    # can't use eos token because data collator
+    # set label to -100 for pad tokens, and eos would
+    # be ignored during training
     pad_token = "<|pad|>"
     tokenizer = base_tokenizer.train_new_from_iterator(
         (e["tex"] for e in dataset["train"]),
@@ -58,7 +62,7 @@ if FROM_SCRATCH:
         new_special_tokens=[pad_token],
     )
     tokenizer.pad_token = "<|pad|>"
-    tokenizer.push_to_hub(MODEL)
+    tokenizer.push_to_hub(MODEL, token=token)
 else:
     tokenizer = AutoTokenizer.from_pretrained(MODEL)
 
@@ -83,7 +87,6 @@ if FROM_SCRATCH:
         vocab_size=len(tokenizer),
         eos_token_id=tokenizer.eos_token_id,
         bos_token_id=tokenizer.bos_token_id,
-        pad_token_id=tokenizer.pad_token_id,
         n_embd=96,  # smaller vocab -> smaller embedding
         n_layer=8,
         n_head=8,
@@ -94,6 +97,7 @@ if FROM_SCRATCH:
 
     generation_config = GenerationConfig(
         eos_token_id=tokenizer.eos_token_id,
+        bos_token_id=tokenizer.bos_token_id,
         pad_token_id=tokenizer.pad_token_id,
         top_k=50,
         top_p=0.95,
@@ -112,7 +116,7 @@ else:
 # %% PREP DATASET
 dataset = dataset.map(
     lambda b: tokenizer(
-        b['tex'],
+        b["tex"],
         max_length=model.config.n_ctx,
         truncation=True,  # because of the option below, it will chunk
         return_overflowing_tokens=True,  # ...tokens, not trancate
@@ -120,8 +124,8 @@ dataset = dataset.map(
         stride=int(model.config.n_ctx * 0.2),
     ),
     batched=True,
-    remove_columns=dataset['train'].column_names
-).select_columns('input_ids')
+    remove_columns=dataset["train"].column_names,
+).select_columns("input_ids")
 
 # %% SETUP TRAINER
 repos_dir = Path(os.getenv("HUB_REPOS") or "").resolve()
