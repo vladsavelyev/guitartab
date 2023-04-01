@@ -93,12 +93,6 @@ else:
     )
 
 # %% PREP DATASET
-ds_dir = None
-if cache_dir := os.getenv("HF_HOME"):
-    ds_dir = Path(cache_dir) / "dataset" / DATASET
-    if not FROM_SCRATCH and not ds_dir.exists():
-        FROM_SCRATCH = True
-
 if FROM_SCRATCH:
     dataset = datasets.load_dataset(DATASET)
 
@@ -128,12 +122,14 @@ if FROM_SCRATCH:
         remove_columns=dataset["train"].column_names,
     ).select_columns("input_ids")
 
-    if ds_dir:
+    if cache_dir := os.getenv('HF_HOME'):
+        ds_dir = Path(cache_dir) / "dataset" / DATASET
         dataset.save_to_disk(str(ds_dir))
 
 else:
+    if cache_dir := os.getenv('HF_HOME'):
+        ds_dir = Path(cache_dir) / "dataset" / DATASET
     dataset = datasets.load_from_disk(str(ds_dir))
-
 
 # %% SETUP TRAINER
 repos_dir = Path(os.getenv("HUB_REPOS") or "").resolve()
