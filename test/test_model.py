@@ -39,7 +39,7 @@ def test_overfit(tmp_path):
         remove_columns=dataset.column_names,
     )
     dataset = dataset.map(
-        lambda b: tokenizer(b["tex"], max_length=model.config.n_ctx, truncation=True),
+        lambda b: tokenizer(b["tex"]),
         batched=True,
         remove_columns=dataset.column_names,
     ).select_columns("input_ids")

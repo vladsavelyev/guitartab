@@ -1,6 +1,18 @@
+import sys
+import os
 from typing import List
 import guitarpro as gp
 import itertools
+from pathlib import Path
+import re
+import asyncio
+from tqdm.asyncio import tqdm_asyncio
+import transliterate
+import logging
+import coloredlogs
+
+fmt = "%(asctime)s %(levelname)s (%(name)s %(lineno)s): %(message)s"
+coloredlogs.install(level="INFO", fmt=fmt)
 
 
 NOTES = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
@@ -53,8 +65,8 @@ def song_to_alphatex(song: gp.Song) -> str:
     lines.append(".")
     for track in song.tracks:
         if not track.channel or not track.channel.instrument:
-            print(
-                f"WARNING: skipping track without instrument: #{track.number} {track.name}"
+            logging.debug(
+                f"Skipping track without instrument: {song.title} #{track.number} {track.name}"
             )
             continue
         lines.append(f"\\track")
@@ -369,39 +381,79 @@ def _parse_effects(note, ef: List[str]):
         i += 1
 
 
-# song = gp.parse("test/data/metallica.gp4")
-# bass = find_bass_track(song)
-# if not bass:
-#     raise ValueError("No bass track found")
-# else:
-#     print(f"Found bass track: {bass.name} (number {bass.number})")
-# tex = track_to_alphatex(bass)
-# print(tex)
-# song2 = alphatex_to_song(tex)
-# gp.write(song2, "test/results/metallica2.gp4")
+def _test():
+    tex = """\
+    \\title "My Song"
+    \\tempo 90
+    .
+    \\track "First Track"
+    \\instrument 42
+    1.1 2.1 3.1 4.1 |
+    \\track
+    \\tuning A1 D2 A2 D3 G3 B3 E4
+    4.1 3.1 2.1 1.1 |
+    """
 
-# tex = """\
-# \\title "My Song"
-# \\tempo 90
-# .
-# \\track "First Track"
-# \\instrument 42
-# 1.1 2.1 3.1 4.1 |
-# \\track
-# \\tuning A1 D2 A2 D3 G3 B3 E4
-# 4.1 3.1 2.1 1.1 |
-# """
+    song = alphatex_to_song(tex)
+    tex2 = song_to_alphatex(song)
+    print("Before:")
+    print(tex)
+    print()
+    print("After:")
+    print(tex2)
 
-# song = alphatex_to_song(tex)
-# tex2 = song_to_alphatex(song)
-# print("Before:")
-# print(tex)
-# print()
-# print("After:")
-# print(tex2)
 
-# song2 = alphatex_to_song(tex2)
-# tex3 = track_to_alphatex(song2.tracks[0])
-# print()
-# print("Second round:")
-# print(tex3)
+def _fix_path(path: Path) -> Path:
+    """
+    Slugify file name.
+    """
+    path = str(path)
+    if re.search(r"[а-яА-Я]", path):
+        path = transliterate.translit(path, "ru", reversed=True)
+    path = re.sub(r"\s+", "_", path)  # replace whitespaces
+    path = re.sub(r"\'", "-", path)  # replace apostrophes
+    return Path(path)
+
+
+async def convert_all():
+    """
+    Convert all GP files in a directory to AlphaTex.
+    """
+    src_path = Path(sys.argv[1])
+    dst_path = Path(sys.argv[2])
+    dst_path.mkdir(exist_ok=True)
+
+    paths = list(src_path.glob("**/*.gp[3-5]"))
+    logging.info(f"Found {len(paths)} GuitarPro files")
+
+    async def _convert_one(path):
+        song_name = path.stem
+        song_name = re.sub(r"\(\d+\)", "", song_name).strip()
+
+        out_path = dst_path / path.relative_to(src_path).with_suffix(".tex")
+        out_path = _fix_path(out_path)
+        if out_path.exists():
+            return
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            song = gp.parse(path)
+        except gp.GPException as e:
+            logging.warning(f"WARNING: failed to parse {path} with a GPException: {e}")
+            return
+        except Exception as e:
+            logging.warning(f"WARNING: failed to parse {path}: {e}")
+            return
+        try:
+            tex = song_to_alphatex(song)
+        except Exception as e:
+            logging.warning(f"WARNING: failed to convert {path} to alphaTex: {e}")
+            return
+        with out_path.open("w") as f:
+            f.write(tex)
+
+    async for path in tqdm_asyncio(paths):
+        await _convert_one(path)
+
+
+if __name__ == "__main__":
+    asyncio.run(convert_all())

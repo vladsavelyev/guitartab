@@ -2,7 +2,6 @@ torch>=2.0
 transformers
 tokenizers
 datasets
-evaluate
 huggingface_hub
 wandb
 black

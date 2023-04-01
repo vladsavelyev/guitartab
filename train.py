@@ -4,7 +4,7 @@ import os
 import math
 from pathlib import Path
 
-import datasets, transformers, evaluate
+import datasets, transformers
 from transformers import (
     GPT2LMHeadModel,
     AutoConfig,
@@ -15,41 +15,33 @@ from transformers import (
     TrainingArguments,
     TrainerCallback,
     DataCollatorForLanguageModeling,
-    EvalPrediction,
     pipeline,
     trainer_utils,
 )
 import coloredlogs
 import guitarpro as gp
-from gp2tex import alphatex_to_song
+from gp_to_tex import alphatex_to_song
 
 coloredlogs.install(level="info")
 datasets.logging.set_verbosity_info()
 transformers.logging.set_verbosity_info()
 
-from_scratch = False
-dry_run = False
-push_to_hub = True
-
-
-token = os.getenv("HUB_TOKEN")
-if push_to_hub and not token:
-    push_to_hub = False
-    print("Cannot push to hub without HUB_TOKEN")
-
 MODEL = "vldsavelyev/guitar_tab_gpt2"
 DATASET = "vldsavelyev/guitar_tab"
 BASE_MODEL = "gpt2"
 FROM_SCRATCH = False
+DRY_RUN = False
+PUSH_TO_HUB = True
 
-# %% DATASET
-
-print(f"Loading dataset from remote repo {DATASET}")
-dataset = datasets.load_dataset(DATASET)
+token = os.getenv("HUB_TOKEN")
+if PUSH_TO_HUB and not token:
+    PUSH_TO_HUB = False
+    print("Cannot push to hub without HUB_TOKEN")
 
 # %% TOKENIZER
 
 if FROM_SCRATCH:
+    dataset = datasets.load_dataset(DATASET)
     base_tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
     # training on small examples would fail without a padding token
     # can't use eos token because data collator
@@ -62,22 +54,10 @@ if FROM_SCRATCH:
         new_special_tokens=[pad_token],
     )
     tokenizer.pad_token = "<|pad|>"
-    tokenizer.push_to_hub(MODEL, token=token)
+    tokenizer.push_to_hub(MODEL, use_auth_token=token)
 else:
     tokenizer = AutoTokenizer.from_pretrained(MODEL)
 
-dataset = dataset["train"].train_test_split(test_size=10)
-
-# Wrap novel chapters with BOS and EOS tokens (tokenizer wouldn't
-# do that even if add_special_tokens is True, see
-# https://github.com/huggingface/transformers/issues/3311)
-dataset = dataset.map(
-    lambda b: {
-        "tex": [f"{tokenizer.bos_token}{x}{tokenizer.eos_token}" for x in b["tex"]]
-    },
-    batched=True,
-    remove_columns=dataset["train"].column_names,
-)
 
 # %% MODEL
 if FROM_SCRATCH:
@@ -88,12 +68,12 @@ if FROM_SCRATCH:
         eos_token_id=tokenizer.eos_token_id,
         bos_token_id=tokenizer.bos_token_id,
         n_embd=96,  # smaller vocab -> smaller embedding
-        n_layer=8,
-        n_head=8,
+        n_layer=10,
+        n_head=12,
     )
     model = GPT2LMHeadModel(config)
     print(f"Model parameters: {model.num_parameters():,}")
-    model.push_to_hub(MODEL)
+    model.push_to_hub(MODEL, use_auth_token=token)
 
     generation_config = GenerationConfig(
         eos_token_id=tokenizer.eos_token_id,
@@ -105,27 +85,55 @@ if FROM_SCRATCH:
         num_return_sequences=1,
         max_length=200,
     )
-    generation_config.push_to_hub(MODEL, "generation_config.json")
+    generation_config.push_to_hub(MODEL, "generation_config.json", use_auth_token=token)
 else:
     model = AutoModelForCausalLM.from_pretrained(MODEL)
     generation_config = GenerationConfig.from_pretrained(
         MODEL, "generation_config.json"
     )
 
-
 # %% PREP DATASET
-dataset = dataset.map(
-    lambda b: tokenizer(
-        b["tex"],
-        max_length=model.config.n_ctx,
-        truncation=True,  # because of the option below, it will chunk
-        return_overflowing_tokens=True,  # ...tokens, not trancate
-        # we want the chunks to overlap by 20%
-        stride=int(model.config.n_ctx * 0.2),
-    ),
-    batched=True,
-    remove_columns=dataset["train"].column_names,
-).select_columns("input_ids")
+ds_dir = None
+if cache_dir := os.getenv("HF_HOME"):
+    ds_dir = Path(cache_dir) / "dataset" / DATASET
+    if not FROM_SCRATCH and not ds_dir.exists():
+        FROM_SCRATCH = True
+
+if FROM_SCRATCH:
+    dataset = datasets.load_dataset(DATASET)
+
+    dataset = dataset["train"].train_test_split(test_size=10)
+
+    # Wrap novel chapters with BOS and EOS tokens (tokenizer wouldn't
+    # do that even if add_special_tokens is True, see
+    # https://github.com/huggingface/transformers/issues/3311)
+    dataset = dataset.map(
+        lambda b: {
+            "tex": [f"{tokenizer.bos_token}{x}{tokenizer.eos_token}" for x in b["tex"]]
+        },
+        batched=True,
+        remove_columns=dataset["train"].column_names,
+    )
+
+    dataset = dataset.map(
+        lambda b: tokenizer(
+            b["tex"],
+            max_length=model.config.n_ctx,
+            truncation=True,  # because of the option below, it will chunk
+            return_overflowing_tokens=True,  # ...tokens, not trancate
+            # we want the chunks to overlap by 20%
+            stride=int(model.config.n_ctx * 0.2),
+        ),
+        batched=True,
+        remove_columns=dataset["train"].column_names,
+    ).select_columns("input_ids")
+
+    if ds_dir:
+        dataset.save_to_disk(str(ds_dir))
+
+else:
+    dataset = datasets.load_from_disk(str(ds_dir))
+
 
 # %% SETUP TRAINER
 repos_dir = Path(os.getenv("HUB_REPOS") or "").resolve()
@@ -136,10 +144,10 @@ if transformers.utils.is_torch_cuda_available():
     training_args = TrainingArguments(
         output_dir=str(save_dir),
         overwrite_output_dir=True,
-        push_to_hub=push_to_hub and os.getenv("HUB_TOKEN") is not None,
+        push_to_hub=PUSH_TO_HUB and os.getenv("HUB_TOKEN") is not None,
         hub_model_id=MODEL,
         hub_token=os.getenv("HUB_TOKEN"),
-        report_to=["all"],
+        report_to="wandb",
         run_name="guitart-gpt2-96-8-8",
         skip_memory_metrics=False,
         evaluation_strategy="steps",
@@ -151,12 +159,13 @@ if transformers.utils.is_torch_cuda_available():
         logging_first_step=True,
         save_total_limit=2,
         load_best_model_at_end=True,
-        lr_scheduler_type="cosine",
+        optim="adamw_torch",
+        lr_scheduler_type="linear",
         warmup_steps=200,
-        per_device_train_batch_size=16,
-        per_device_eval_batch_size=16,
-        # gradient_checkpointing=True,
-        gradient_accumulation_steps=4,
+        per_device_train_batch_size=48,
+        per_device_eval_batch_size=48,
+        gradient_checkpointing=True,     # must have! 10x < mem, 40% < speed, = loss
+        gradient_accumulation_steps=16,  # > speed, = mem, < loss
         fp16=True,
         ignore_data_skip=True,
     )
@@ -169,6 +178,7 @@ else:
         eval_steps=1,
         logging_steps=1,
         logging_first_step=True,
+        optim="adamw_torch",
         per_device_train_batch_size=1,
         per_device_eval_batch_size=1,
     )
@@ -183,12 +193,6 @@ generator = pipeline(
 
 out_dir = Path("output")
 out_dir.mkdir(exist_ok=True)
-
-
-def compute_metrics(eval_preds: EvalPrediction):
-    perplexity = evaluate.load("perplexity", module_type="metric")
-    pred = eval_preds.predictions.argmax(axis=-1)
-    return perplexity.compute(predictions=pred, model_id="gpt2")
 
 
 class MyCallback(TrainerCallback):
@@ -225,13 +229,17 @@ trainer = Trainer(
     eval_dataset=dataset["test"],
     callbacks=[MyCallback],
     args=training_args,
-    compute_metrics=compute_metrics,
 )
 
 
 # %% TRAIN
-if not dry_run:
+if not DRY_RUN:
     trainer.evaluate()  # to early test evaluation works
     trainer.train(resume_from_checkpoint=trainer_utils.get_last_checkpoint(save_dir))
-    if push_to_hub:
+    if PUSH_TO_HUB:
         trainer.save_model()  # also calls push_to_hub
+
+
+import wandb
+
+wandb.agent(sweep_id, train, count=20)

@@ -1,4 +1,4 @@
-from gp2tex import alphatex_to_song, song_to_alphatex
+from gp_to_tex import alphatex_to_song, song_to_alphatex
 
 
 def _test_conversion(tex):
