@@ -4,10 +4,12 @@ Training transformer for understanding guitar tablatures in alphaTex format.
 
 Tablature (tabs) is a common notation to represent guitar music. Unlike sheet music, tabs is easier to read for beginners as they directly show the guitar frets that need to be played. For example, the notation below is showing that the 7th fret of the 4th string needs to be played twice, followed by the 5th fret on the 3rd string, followed by an open 2nd string, and finally 4th string and the first string are played at the same time.
 
+```
 G|-7-7-------7-|
 D|-----5-5-----|
 A|---------0---|
 E|-----------7-|
+```
 
 It's a pretty compact representation of music and, in theory should facilitate efficient music generation with transformer-based NLP models. Music is in low ways similar in text, having a structure full of self-references, full and partial repetitions, and higher-level semantics (e.g. roles of different chords in creating moods), and global composition (e.g. introduction-culmination-conclusion). That fits well to be captured by the attention mechanism. 
 
