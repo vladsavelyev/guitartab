@@ -17,6 +17,7 @@ from transformers import (
     pipeline,
     trainer_utils,
 )
+import wandb
 import coloredlogs
 import guitarpro as gp
 from gp_to_tex import alphatex_to_song
@@ -142,10 +143,6 @@ else:
 
 # %% EXPLORE HYPERPARAMETERS
 def explore_hyperparameters():
-    import wandb
-    from datasets import load_metric
-    import numpy as np
-
     sweep_config = {
         "method": "grid",
         "parameters": {
@@ -234,7 +231,7 @@ if transformers.utils.is_torch_cuda_available():
         per_device_train_batch_size=48,
         per_device_eval_batch_size=48,
         gradient_checkpointing=True,  # must have! 10x < mem, 40% < speed, = loss
-        gradient_accumulation_steps=16,  # > speed, = mem, < loss
+        gradient_accumulation_steps=8,  # > speed, = mem, < loss
         fp16=True,
         ignore_data_skip=True,
     )
