@@ -214,7 +214,7 @@ if transformers.utils.is_torch_cuda_available():
         hub_model_id=MODEL,
         hub_token=os.getenv("HUB_TOKEN"),
         report_to="wandb",
-        run_name="guitart-gpt2-96-8-8",
+        run_name="guitartab-gpt2",
         skip_memory_metrics=False,
         evaluation_strategy="steps",
         save_strategy="steps",
