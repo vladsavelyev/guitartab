@@ -1,5 +1,4 @@
 # %% IMPORTS
-
 import os
 import math
 from pathlib import Path
@@ -26,8 +25,10 @@ coloredlogs.install(level="info")
 datasets.logging.set_verbosity_info()
 transformers.logging.set_verbosity_info()
 
-MODEL = "vldsavelyev/guitar_tab_gpt2"
+TOKENIZER = "vldsavelyev/guitar_tab_gpt2"
+MODEL = "vldsavelyev/guitartab_bass"  # trained specifically on bass tracks
 DATASET = "vldsavelyev/guitar_tab"
+FILT_BASS = True
 BASE_MODEL = "gpt2"
 FROM_SCRATCH = False
 DRY_RUN = False
@@ -39,7 +40,6 @@ if PUSH_TO_HUB and not token:
     print("Cannot push to hub without HUB_TOKEN")
 
 # %% TOKENIZER
-
 if FROM_SCRATCH:
     dataset = datasets.load_dataset(DATASET)
     base_tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
@@ -96,6 +96,14 @@ else:
 if FROM_SCRATCH:
     dataset = datasets.load_dataset(DATASET)
 
+    if FILT_BASS:
+        dataset = dataset.filter(
+            lambda x: (
+                "Bass" in (x.get("instrument") or "").split()
+                and len((x.get("tuning") or "[]").split(",")) == 4
+            )
+        )
+
     dataset = dataset["train"].train_test_split(test_size=10)
 
     # Wrap novel chapters with BOS and EOS tokens (tokenizer wouldn't
@@ -122,14 +130,79 @@ if FROM_SCRATCH:
         remove_columns=dataset["train"].column_names,
     ).select_columns("input_ids")
 
-    if cache_dir := os.getenv('HF_HOME'):
+    if cache_dir := os.getenv("HF_HOME"):
         ds_dir = Path(cache_dir) / "dataset" / DATASET
         dataset.save_to_disk(str(ds_dir))
 
 else:
-    if cache_dir := os.getenv('HF_HOME'):
+    if cache_dir := os.getenv("HF_HOME"):
         ds_dir = Path(cache_dir) / "dataset" / DATASET
     dataset = datasets.load_from_disk(str(ds_dir))
+
+
+# %% EXPLORE HYPERPARAMETERS
+def explore_hyperparameters():
+    import wandb
+    from datasets import load_metric
+    import numpy as np
+
+    sweep_config = {
+        "method": "grid",
+        "parameters": {
+            "optim": {"values": ["adamw_torch", "adafactor"]},
+            "batch_size": {
+                "values": [8, 32],
+            },
+            "gradient_checkpointing": {"values": [True, False]},
+        },
+        "metric": {
+            "name": "train/train_samples_per_second",
+            "goal": "maximize",
+        },
+    }
+
+    sweep_id = wandb.sweep(sweep_config, project="guitartab-sweeps")
+
+    sweep_train_set = dataset["train"].train_test_split(test_size=640)["test"]
+
+    def hp_search(config=None):
+        with wandb.init(config=config):
+            # set sweep configuration
+            config = wandb.config
+
+            # set training arguments
+            targs = TrainingArguments(
+                output_dir="wandb-sweeps",
+                report_to="wandb",
+                skip_memory_metrics=False,
+                eval_accumulation_steps=20,
+                optim=config.optim,
+                num_train_epochs=1,
+                lr_scheduler_type="linear",
+                per_device_train_batch_size=config.batch_size,
+                per_device_eval_batch_size=config.batch_size,
+                gradient_checkpointing=config.gradient_checkpointing,
+                fp16=True,
+                save_strategy="epoch",
+                evaluation_strategy="epoch",
+                logging_strategy="epoch",
+                remove_unused_columns=False,
+            )
+
+            trainer = Trainer(
+                model_init=lambda: AutoModelForCausalLM.from_pretrained(MODEL),
+                args=targs,
+                data_collator=DataCollatorForLanguageModeling(
+                    tokenizer=tokenizer,
+                    mlm=False,
+                ),
+                train_dataset=sweep_train_set,
+                eval_dataset=dataset["test"],
+            )
+            trainer.train()
+
+    wandb.agent(sweep_id, hp_search)
+
 
 # %% SETUP TRAINER
 repos_dir = Path(os.getenv("HUB_REPOS") or "").resolve()
@@ -148,19 +221,19 @@ if transformers.utils.is_torch_cuda_available():
         skip_memory_metrics=False,
         evaluation_strategy="steps",
         save_strategy="steps",
-        save_steps=100,
-        eval_steps=100,
-        eval_accumulation_steps=20,
-        logging_steps=10,
+        save_steps=20,
+        eval_steps=20,
+        eval_accumulation_steps=5,
+        logging_steps=5,
         logging_first_step=True,
         save_total_limit=2,
         load_best_model_at_end=True,
         optim="adamw_torch",
         lr_scheduler_type="linear",
-        warmup_steps=200,
+        warmup_steps=20,
         per_device_train_batch_size=48,
         per_device_eval_batch_size=48,
-        gradient_checkpointing=True,     # must have! 10x < mem, 40% < speed, = loss
+        gradient_checkpointing=True,  # must have! 10x < mem, 40% < speed, = loss
         gradient_accumulation_steps=16,  # > speed, = mem, < loss
         fp16=True,
         ignore_data_skip=True,
@@ -234,8 +307,3 @@ if not DRY_RUN:
     trainer.train(resume_from_checkpoint=trainer_utils.get_last_checkpoint(save_dir))
     if PUSH_TO_HUB:
         trainer.save_model()  # also calls push_to_hub
-
-
-import wandb
-
-wandb.agent(sweep_id, train, count=20)
