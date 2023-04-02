@@ -1,5 +1,4 @@
 import sys
-import os
 from typing import List
 import guitarpro as gp
 import itertools
@@ -14,46 +13,10 @@ import coloredlogs
 fmt = "%(asctime)s %(levelname)s (%(name)s %(lineno)s): %(message)s"
 coloredlogs.install(level="INFO", fmt=fmt)
 
+__all__ = ["alphatex_to_song", "song_to_alphatex", "convert_all"]
+
 
 NOTES = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
-
-
-def text_for_tuning(tuning: int, include_octave=False):
-    """
-    Convert tuning to text representation
-    :param tuning: tuning in format octave * 12 + note
-    :param include_octave: whether to include octave in the result
-    :return: text representation of the tuning
-
-    >>> text_for_tuning(49)
-    'Db'
-    >>> text_for_tuning(49, include_octave=True)
-    'Db4'
-    """
-    octave = tuning // 12
-    note = tuning % 12
-    result = NOTES[note]
-    if include_octave:
-        result += str(octave)
-    return result
-
-
-def parse_tuning(tuning: str) -> int:
-    """
-    Parse tuning from text representation
-    :param tuning: text representation of the tuning
-    :return: tuning in format octave * 12 + note
-
-    >>> parse_tuning("Db4")
-    49
-    """
-    octave = 4
-    note = 0
-    if tuning[-1].isdigit():
-        octave = int(tuning[-1])
-        tuning = tuning[:-1]
-    note = NOTES.index(tuning)
-    return octave * 12 + note
 
 
 def song_to_alphatex(song: gp.Song) -> str:
@@ -73,13 +36,51 @@ def song_to_alphatex(song: gp.Song) -> str:
         lines.append(f"\\instrument {track.channel.instrument}")
         if track.strings:
             tuning = [
-                text_for_tuning(s.value, include_octave=True) for s in track.strings
+                _tuning_to_str(s.value, include_octave=True) for s in track.strings
             ]
             lines.append(f"\\tuning {' '.join(tuning)}")
         if track.fretCount:
             lines.append(f"\\frets {track.fretCount}")
         lines.append(_measures_to_str(track.measures))
     return "\n".join(lines)
+
+
+def _tuning_to_str(tuning: int, include_octave=False):
+    """
+    Convert tuning to text representation
+    :param tuning: tuning in format octave * 12 + note
+    :param include_octave: whether to include octave in the result
+    :return: text representation of the tuning
+
+    >>> text_for_tuning(49)
+    'Db'
+    >>> text_for_tuning(49, include_octave=True)
+    'Db4'
+    """
+    octave = tuning // 12
+    note = tuning % 12
+    result = NOTES[note]
+    if include_octave:
+        result += str(octave)
+    return result
+
+
+def _parse_tuning(tuning: str) -> int:
+    """
+    Parse tuning from text representation
+    :param tuning: text representation of the tuning
+    :return: tuning in format octave * 12 + note
+
+    >>> parse_tuning("Db4")
+    49
+    """
+    octave = 4
+    note = 0
+    if tuning[-1].isdigit():
+        octave = int(tuning[-1])
+        tuning = tuning[:-1]
+    note = NOTES.index(tuning)
+    return octave * 12 + note
 
 
 def _measures_to_str(measures: List[gp.Measure]) -> str:
@@ -211,7 +212,7 @@ def alphatex_to_song(tex: str) -> gp.Song:
             song.tracks[-1].channel.instrument = int(v)
         elif k == "tuning":
             song.tracks[-1].strings = [
-                gp.GuitarString(i + 1, parse_tuning(v))
+                gp.GuitarString(i + 1, _parse_tuning(v))
                 for i, v in enumerate(v.split(" "))
             ]
         elif k == "frets":
