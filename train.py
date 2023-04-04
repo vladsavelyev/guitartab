@@ -27,13 +27,16 @@ datasets.logging.set_verbosity_info()
 transformers.logging.set_verbosity_info()
 
 TOKENIZER = "vldsavelyev/guitar_tab_gpt2"
-MODEL = "vldsavelyev/guitartab_bass"  # trained specifically on bass tracks
+MODEL = "vldsavelyev/guitar_tab_gpt2"
 DATASET = "vldsavelyev/guitar_tab"
-FILT_BASS = True
 BASE_MODEL = "gpt2"
 FROM_SCRATCH = False
 DRY_RUN = False
 PUSH_TO_HUB = True
+
+INSTRUMENT_CLASS = "bass"
+if INSTRUMENT_CLASS:
+    MODEL += f"_{INSTRUMENT_CLASS}"
 
 token = os.getenv("HUB_TOKEN")
 if PUSH_TO_HUB and not token:
@@ -43,6 +46,12 @@ if PUSH_TO_HUB and not token:
 # %% TOKENIZER
 if FROM_SCRATCH:
     dataset = datasets.load_dataset(DATASET)
+    n_examples = 10_000
+    examples = dataset["train"].shuffle(seed=42)[:n_examples]
+    batch_size = 1000
+    batches = (
+        examples["text"][i : i + batch_size] for i in range(0, n_examples, batch_size)
+    )
     base_tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
     # training on small examples would fail without a padding token
     # can't use eos token because data collator
@@ -50,7 +59,7 @@ if FROM_SCRATCH:
     # be ignored during training
     pad_token = "<|pad|>"
     tokenizer = base_tokenizer.train_new_from_iterator(
-        (e["tex"] for e in dataset["train"]),
+        batches,
         vocab_size=500,
         new_special_tokens=[pad_token],
     )
@@ -58,7 +67,6 @@ if FROM_SCRATCH:
     tokenizer.push_to_hub(MODEL, use_auth_token=token)
 else:
     tokenizer = AutoTokenizer.from_pretrained(MODEL)
-
 
 # %% MODEL
 if FROM_SCRATCH:
@@ -97,11 +105,21 @@ else:
 if FROM_SCRATCH:
     dataset = datasets.load_dataset(DATASET)
 
-    if FILT_BASS:
+    if INSTRUMENT_CLASS:
+        INSTRUMENT_NUMBERS = {
+            "guitar": range(24, 31 + 1),
+            "bass": range(32, 39 + 1),
+        }
+        INSTRUMENT_STRING_NUMBERS = {
+            "guitar": 6,
+            "bass": 4,
+        }
         dataset = dataset.filter(
             lambda x: (
-                "Bass" in (x.get("instrument") or "").split()
-                and len((x.get("tuning") or "[]").split(",")) == 4
+                (x.get("instrument_number") or -1)
+                in INSTRUMENT_NUMBERS[INSTRUMENT_CLASS]
+                and len((x.get("tuning") or "[]").split(","))
+                == INSTRUMENT_STRING_NUMBERS[INSTRUMENT_CLASS]
             )
         )
 
@@ -112,7 +130,9 @@ if FROM_SCRATCH:
     # https://github.com/huggingface/transformers/issues/3311)
     dataset = dataset.map(
         lambda b: {
-            "tex": [f"{tokenizer.bos_token}{x}{tokenizer.eos_token}" for x in b["tex"]]
+            "text": [
+                f"{tokenizer.bos_token}{x}{tokenizer.eos_token}" for x in b["text"]
+            ]
         },
         batched=True,
         remove_columns=dataset["train"].column_names,
@@ -120,12 +140,12 @@ if FROM_SCRATCH:
 
     dataset = dataset.map(
         lambda b: tokenizer(
-            b["tex"],
+            b["text"],
             max_length=model.config.n_ctx,
             truncation=True,  # because of the option below, it will chunk
             return_overflowing_tokens=True,  # ...tokens, not trancate
             # we want the chunks to overlap by 20%
-            stride=int(model.config.n_ctx * 0.2),
+            stride=int(model.config.n_ctx * 0.1),
         ),
         batched=True,
         remove_columns=dataset["train"].column_names,
