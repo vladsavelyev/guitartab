@@ -102,7 +102,10 @@ else:
     )
 
 # %% PREP DATASET
-if FROM_SCRATCH:
+if ds_cache_dir := os.getenv("HF_HOME"):
+    ds_cache_dir = Path(ds_cache_dir) / "dataset" / DATASET
+
+if FROM_SCRATCH or ds_cache_dir is None:
     dataset = datasets.load_dataset(DATASET)
 
     if INSTRUMENT_CLASS:
@@ -151,14 +154,11 @@ if FROM_SCRATCH:
         remove_columns=dataset["train"].column_names,
     ).select_columns("input_ids")
 
-    if cache_dir := os.getenv("HF_HOME"):
-        ds_dir = Path(cache_dir) / "dataset" / DATASET
-        dataset.save_to_disk(str(ds_dir))
+    if ds_cache_dir:
+        dataset.save_to_disk(ds_cache_dir)
 
 else:
-    if cache_dir := os.getenv("HF_HOME"):
-        ds_dir = Path(cache_dir) / "dataset" / DATASET
-    dataset = datasets.load_from_disk(str(ds_dir))
+    dataset = datasets.load_from_disk(ds_cache_dir)
 
 
 # %% EXPLORE HYPERPARAMETERS
