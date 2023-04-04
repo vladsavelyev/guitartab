@@ -102,63 +102,53 @@ else:
     )
 
 # %% PREP DATASET
-if ds_cache_dir := os.getenv("HF_HOME"):
-    ds_cache_dir = Path(ds_cache_dir) / "dataset" / DATASET
+dataset = datasets.load_dataset(DATASET)
 
-if FROM_SCRATCH or ds_cache_dir is None:
-    dataset = datasets.load_dataset(DATASET)
-
-    if INSTRUMENT_CLASS:
-        INSTRUMENT_NUMBERS = {
-            "guitar": range(24, 31 + 1),
-            "bass": range(32, 39 + 1),
-        }
-        INSTRUMENT_STRING_NUMBERS = {
-            "guitar": 6,
-            "bass": 4,
-        }
-        dataset = dataset.filter(
-            lambda x: (
-                (x.get("instrument_number") or -1)
-                in INSTRUMENT_NUMBERS[INSTRUMENT_CLASS]
-                and len((x.get("tuning") or "[]").split(","))
-                == INSTRUMENT_STRING_NUMBERS[INSTRUMENT_CLASS]
-            )
+if INSTRUMENT_CLASS:
+    INSTRUMENT_NUMBERS = {
+        "guitar": range(24, 31 + 1),
+        "bass": range(32, 39 + 1),
+    }
+    INSTRUMENT_STRING_NUMBERS = {
+        "guitar": 6,
+        "bass": 4,
+    }
+    dataset = dataset.filter(
+        lambda x: (
+            (x.get("instrument_number") or -1)
+            in INSTRUMENT_NUMBERS[INSTRUMENT_CLASS]
+            and len((x.get("tuning") or "[]").split(","))
+            == INSTRUMENT_STRING_NUMBERS[INSTRUMENT_CLASS]
         )
-
-    dataset = dataset["train"].train_test_split(test_size=10)
-
-    # Wrap novel chapters with BOS and EOS tokens (tokenizer wouldn't
-    # do that even if add_special_tokens is True, see
-    # https://github.com/huggingface/transformers/issues/3311)
-    dataset = dataset.map(
-        lambda b: {
-            "text": [
-                f"{tokenizer.bos_token}{x}{tokenizer.eos_token}" for x in b["text"]
-            ]
-        },
-        batched=True,
-        remove_columns=dataset["train"].column_names,
     )
 
-    dataset = dataset.map(
-        lambda b: tokenizer(
-            b["text"],
-            max_length=model.config.n_ctx,
-            truncation=True,  # because of the option below, it will chunk
-            return_overflowing_tokens=True,  # ...tokens, not trancate
-            # we want the chunks to overlap by 20%
-            stride=int(model.config.n_ctx * 0.1),
-        ),
-        batched=True,
-        remove_columns=dataset["train"].column_names,
-    ).select_columns("input_ids")
+dataset = dataset["train"].train_test_split(test_size=10)
 
-    if ds_cache_dir:
-        dataset.save_to_disk(ds_cache_dir)
+# Wrap novel chapters with BOS and EOS tokens (tokenizer wouldn't
+# do that even if add_special_tokens is True, see
+# https://github.com/huggingface/transformers/issues/3311)
+dataset = dataset.map(
+    lambda b: {
+        "text": [
+            f"{tokenizer.bos_token}{x}{tokenizer.eos_token}" for x in b["text"]
+        ]
+    },
+    batched=True,
+    remove_columns=dataset["train"].column_names,
+)
 
-else:
-    dataset = datasets.load_from_disk(ds_cache_dir)
+dataset = dataset.map(
+    lambda b: tokenizer(
+        b["text"],
+        max_length=model.config.n_ctx,
+        truncation=True,  # because of the option below, it will chunk
+        return_overflowing_tokens=True,  # ...tokens, not trancate
+        # we want the chunks to overlap by 20%
+        stride=int(model.config.n_ctx * 0.1),
+    ),
+    batched=True,
+    remove_columns=dataset["train"].column_names,
+).select_columns("input_ids")
 
 
 # %% EXPLORE HYPERPARAMETERS
@@ -168,13 +158,14 @@ def explore_hyperparameters():
         "parameters": {
             "optim": {"values": ["adamw_torch", "adafactor"]},
             "batch_size": {
-                "values": [8, 32],
+                "values": [1, 4, 8, 32],
             },
             "gradient_checkpointing": {"values": [True, False]},
+            "gradient_accumulation_steps": {"values": [1, 8, 64]},
         },
         "metric": {
-            "name": "train/train_samples_per_second",
-            "goal": "maximize",
+            "name": "eval/loss",
+            "goal": "minimize",
         },
     }
 
@@ -199,6 +190,7 @@ def explore_hyperparameters():
                 per_device_train_batch_size=config.batch_size,
                 per_device_eval_batch_size=config.batch_size,
                 gradient_checkpointing=config.gradient_checkpointing,
+                gradient_accumulation_steps=config.gradient_accumulation_steps,
                 fp16=True,
                 save_strategy="epoch",
                 evaluation_strategy="epoch",
@@ -222,8 +214,8 @@ def explore_hyperparameters():
 
 
 # %% SETUP TRAINER
-repos_dir = Path(os.getenv("HUB_REPOS") or "").resolve()
-save_dir = repos_dir / "models" / MODEL
+save_dir = Path(".saves") / MODEL
+save_dir.mkdir(parents=True, exist_ok=True)
 
 if transformers.utils.is_torch_cuda_available():
     # Optimal configuration for T4 Colab GPU with 15G memory
@@ -238,20 +230,23 @@ if transformers.utils.is_torch_cuda_available():
         skip_memory_metrics=False,
         evaluation_strategy="steps",
         save_strategy="steps",
-        save_steps=20,
-        eval_steps=20,
+        save_steps=500,
+        eval_steps=500,
         eval_accumulation_steps=5,
-        logging_steps=5,
+        logging_steps=50,
         logging_first_step=True,
         save_total_limit=2,
         load_best_model_at_end=True,
         optim="adamw_torch",
         lr_scheduler_type="linear",
-        warmup_steps=20,
-        per_device_train_batch_size=48,
-        per_device_eval_batch_size=48,
-        gradient_checkpointing=True,  # must have! 10x < mem, 40% < speed, = loss
-        gradient_accumulation_steps=8,  # > speed, = mem, < loss
+        warmup_steps=200,
+        # Most optimal configuration per sweeps
+        # https://wandb.ai/vsavelyev/guitartab-sweeps/sweeps/bx7jbzna?workspace=user-vsavelyev
+        # https://wandb.ai/vsavelyev/guitartab-sweeps/sweeps/meecv8s2?workspace=user-vsavelyev
+        per_device_train_batch_size=8,
+        per_device_eval_batch_size=8,
+        # gradient_checkpointing=True,  # 10x < mem, 40% > runtime, = loss
+        # gradient_accumulation_steps=8,  # < runtime, = mem, < loss
         fp16=True,
         ignore_data_skip=True,
     )
@@ -277,8 +272,8 @@ generator = pipeline(
     generation_config=generation_config,
 )
 
-out_dir = Path("output")
-out_dir.mkdir(exist_ok=True)
+testing_dir = Path(".testing")
+testing_dir.mkdir(exist_ok=True)
 
 
 class MyCallback(TrainerCallback):
@@ -294,15 +289,27 @@ class MyCallback(TrainerCallback):
             tex = result["generated_text"]
             print(tex)
             tex = tex.replace(tokenizer.eos_token, "")
+            tex = tex.rsplit("|", 1)[0]
+            tex = """\
+\\title "Step {state.global_step}"
+.
+\\track
+\\instrument 34
+\\tuning G3 D3 A2 E2
+{tex}
+"""
             try:
                 song = alphatex_to_song(tex)
-            except:
-                print("Could not parse the tex to GP")
+            except Exception as e:
+                print("Could not parse the tex to GP:", e)
             else:
                 try:
-                    gp.write(song, str(out_dir / f"{state.global_step}.gp"))
-                except:
-                    print("Could not write the GP file")
+                    path = testing_dir / f"{state.global_step}.gp"
+                    gp.write(song, str(path))
+                except Exception as e:
+                    print("Could not write the GP file:", e)
+                else:
+                    print("Saved song to", path)
 
 
 trainer = Trainer(
