@@ -64,9 +64,9 @@ if FROM_SCRATCH:
         new_special_tokens=[pad_token],
     )
     tokenizer.pad_token = "<|pad|>"
-    tokenizer.push_to_hub(MODEL, use_auth_token=token)
+    tokenizer.push_to_hub(TOKENIZER, use_auth_token=token)
 else:
-    tokenizer = AutoTokenizer.from_pretrained(MODEL)
+    tokenizer = AutoTokenizer.from_pretrained(TOKENIZER)
 
 # %% MODEL
 if FROM_SCRATCH:
