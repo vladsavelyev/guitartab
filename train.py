@@ -10,7 +10,7 @@ from transformers import (
     DataCollatorForLanguageModeling,
     trainer_utils,
 )
-from model import load_model, MODEL, load_tokenizer, prep_dataset, TOKEN
+from guitartab import load_model, MODEL, load_tokenizer, prep_dataset, TOKEN
 from generate import generate_song
 import logging
 
@@ -50,8 +50,10 @@ if transformers.utils.is_torch_cuda_available():
         lr_scheduler_type="linear",
         warmup_steps=200,
         # Most optimal configuration per sweeps
-        # https://wandb.ai/vsavelyev/guitartab-sweeps/sweeps/bx7jbzna?workspace=user-vsavelyev
-        # https://wandb.ai/vsavelyev/guitartab-sweeps/sweeps/meecv8s2?workspace=user-vsavelyev
+        # https://wandb.ai/vsavelyev/guitartab-sweeps/sweeps/bx7jbzna?workspace=user
+        # -vsavelyev
+        # https://wandb.ai/vsavelyev/guitartab-sweeps/sweeps/meecv8s2?workspace=user
+        # -vsavelyev
         per_device_train_batch_size=8,
         per_device_eval_batch_size=8,
         # gradient_checkpointing=True,  # 10x < mem, 40% > runtime, = loss
@@ -72,7 +74,6 @@ else:
         per_device_train_batch_size=1,
         per_device_eval_batch_size=1,
     )
-
 
 testing_dir = Path(".testing")
 testing_dir.mkdir(exist_ok=True)

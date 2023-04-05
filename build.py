@@ -9,7 +9,8 @@ from transformers import (
     AutoTokenizer,
     GenerationConfig,
 )
-from model import TOKENIZER, MODEL, DATASET, BASE_MODEL, TOKEN
+
+from guitartab import TOKEN, MODEL, TOKENIZER, DATASET, BASE_MODEL
 
 if not TOKEN:
     raise ValueError("Cannot push to hub without HUB_TOKEN")
@@ -20,7 +21,7 @@ n_examples = 10_000
 examples = dataset["train"].shuffle(seed=42)[:n_examples]
 batch_size = 1000
 batches = (
-    examples["text"][i : i + batch_size] for i in range(0, n_examples, batch_size)
+    examples["text"][i: i + batch_size] for i in range(0, n_examples, batch_size)
 )
 base_tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
 # training on small examples would fail without a padding token

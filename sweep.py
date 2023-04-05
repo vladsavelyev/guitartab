@@ -8,8 +8,7 @@ from transformers import (
     DataCollatorForLanguageModeling,
 )
 import wandb
-from model import prep_dataset, load_model, load_tokenizer, MODEL
-
+from guitartab import prep_dataset, load_model, load_tokenizer, MODEL
 
 tokenizer = load_tokenizer()
 dataset = prep_dataset()

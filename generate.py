@@ -6,8 +6,8 @@ from transformers import (
     pipeline,
 )
 
-from gp_to_tex import alphatex_to_song
-from model import load_model, load_tokenizer, load_generation_config
+from alphatex import alphatex_to_song
+from guitartab import load_model, load_tokenizer, load_generation_config
 
 SONG_TMPL = """\
 \\title "{}"

@@ -1,20 +1,23 @@
 """
-Reusable parts by build.py, sweep.py, train.py, and generate.py
+Importable module for scripts build.py, train.py, sweep.py, generate.py
 """
 
 import os
-import datasets, transformers
+
+import coloredlogs
+import datasets
+import transformers
+from transformers import (
+    AutoModelForCausalLM,
+)
 from transformers import (
     AutoTokenizer,
-    AutoModelForCausalLM,
     GenerationConfig,
 )
-import coloredlogs
 
 coloredlogs.install(level="info")
 datasets.logging.set_verbosity_info()
 transformers.logging.set_verbosity_info()
-
 
 TOKENIZER = "vldsavelyev/guitar_tab_gpt2"
 MODEL = "vldsavelyev/guitar_tab_gpt2"
@@ -85,7 +88,7 @@ def prep_dataset(instrument_class=None):
             b["text"],
             max_length=model.config.n_ctx,
             truncation=True,  # because of the option below, it will chunk
-            return_overflowing_tokens=True,  # ...tokens, not trancate
+            return_overflowing_tokens=True,  # ...tokens, not truncate
             # we want the chunks to overlap by 20%
             stride=int(model.config.n_ctx * 0.1),
         ),

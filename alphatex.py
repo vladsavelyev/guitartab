@@ -1,3 +1,7 @@
+"""
+Functions to convert from GuitarPro files to alphatex and vice versa
+"""
+
 import sys
 from typing import List
 import guitarpro as gp
@@ -15,7 +19,6 @@ coloredlogs.install(level="INFO", fmt=fmt)
 
 __all__ = ["alphatex_to_song", "song_to_alphatex", "convert_all"]
 
-
 NOTES = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
 
 
@@ -29,7 +32,8 @@ def song_to_alphatex(song: gp.Song) -> str:
     for track in song.tracks:
         if not track.channel or not track.channel.instrument:
             logging.debug(
-                f"Skipping track without instrument: {song.title} #{track.number} {track.name}"
+                f"Skipping track without instrument: {song.title} #{track.number} "
+                f"{track.name}"
             )
             continue
         lines.append(f"\\track")
