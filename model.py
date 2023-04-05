@@ -35,7 +35,14 @@ def load_generation_config():
     return GenerationConfig.from_pretrained(MODEL, "generation_config.json")
 
 
-def prep_dataset(model, tokenizer, instrument_class=None):
+def prep_dataset(instrument_class=None):
+    """
+    Load dataset and prepare for training:
+    - optionally filter by instrument class
+    - split into train and test
+    - wrap examples with BOS and EOS tokens
+    - tokenize with chunking
+    """
     dataset = datasets.load_dataset(DATASET)
     model = load_model()
     tokenizer = load_tokenizer()
@@ -60,7 +67,7 @@ def prep_dataset(model, tokenizer, instrument_class=None):
 
     dataset = dataset["train"].train_test_split(test_size=10)
 
-    # Wrap novel chapters with BOS and EOS tokens (tokenizer wouldn't
+    # Wrap examples with BOS and EOS tokens (tokenizer wouldn't
     # do that even if add_special_tokens is True, see
     # https://github.com/huggingface/transformers/issues/3311)
     dataset = dataset.map(
@@ -73,7 +80,7 @@ def prep_dataset(model, tokenizer, instrument_class=None):
         remove_columns=dataset["train"].column_names,
     )
 
-    dataset = dataset.map(
+    return dataset.map(
         lambda b: tokenizer(
             b["text"],
             max_length=model.config.n_ctx,

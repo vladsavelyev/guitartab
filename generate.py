@@ -1,22 +1,13 @@
-import datasets, transformers
-from transformers import (
-    GPT2LMHeadModel,
-    AutoConfig,
-    AutoTokenizer,
-    AutoModelForCausalLM,
-    GenerationConfig,
-    Trainer,
-    TrainingArguments,
-    TrainerCallback,
-    DataCollatorForLanguageModeling,
-    pipeline,
-    trainer_utils,
-)
-from model import load_model, load_tokenizer, load_generation_config
-from gp_to_tex import alphatex_to_song
 from pathlib import Path
-import guitarpro as gp
 
+import guitarpro as gp
+import transformers
+from transformers import (
+    pipeline,
+)
+
+from gp_to_tex import alphatex_to_song
+from model import load_model, load_tokenizer, load_generation_config
 
 SONG_TMPL = """\
 \\title "{}"

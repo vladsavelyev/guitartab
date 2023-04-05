@@ -41,9 +41,9 @@ def hp_search(config=None):
         config = wandb.config
 
         # set training arguments
-        targs = TrainingArguments(
+        args = TrainingArguments(
             output_dir="wandb-sweeps",
-            report_to="wandb",
+            report_to=["wandb"],
             skip_memory_metrics=False,
             eval_accumulation_steps=20,
             optim=config.optim,
@@ -62,7 +62,7 @@ def hp_search(config=None):
 
         trainer = Trainer(
             model_init=load_model,
-            args=targs,
+            args=args,
             data_collator=DataCollatorForLanguageModeling(
                 tokenizer=tokenizer,
                 mlm=False,

@@ -1,5 +1,4 @@
 # %% IMPORTS
-import os
 import math
 from pathlib import Path
 
@@ -35,7 +34,7 @@ if transformers.utils.is_torch_cuda_available():
         push_to_hub=TOKEN is not None,
         hub_model_id=MODEL,
         hub_token=TOKEN,
-        report_to="wandb",
+        report_to=["wandb"],
         run_name=MODEL.split("/")[-1],
         skip_memory_metrics=False,
         evaluation_strategy="steps",
@@ -80,23 +79,23 @@ testing_dir.mkdir(exist_ok=True)
 
 
 class MyCallback(TrainerCallback):
-    def on_evaluate(self, args, state, control, model, tokenizer, **kwargs):
+    def on_evaluate(self, args, state, control, **kwargs):
         if metrics := kwargs.get("metrics"):
+            model, tokenizer = kwargs["model"], kwargs["tokenizer"]
             loss = metrics["eval_loss"]
             print(f"Eval loss: {loss:.4f}")
             print(f"Perplexity: {math.exp(loss):.2f}")
+            generate_song(
+                out_dir=testing_dir,
+                title=f"Step {state.global_step}, loss {loss:.4f}",
+                model=model,
+                tokenizer=tokenizer,
+                device=args.device,
+                max_length=1000,
+                num_return_sequences=1,
+            )
         if state.best_metric:
             print(f"Best loss so far: {state.best_metric:.4f}")
-
-        generate_song(
-            out_dir=testing_dir,
-            title=f"Step {state.global_step}, loss {loss:.4f}",
-            model=model,
-            tokenizer=tokenizer,
-            device=args.device,
-            max_length=1000,
-            num_return_sequences=1,
-        )
 
 
 trainer = Trainer(

@@ -2,7 +2,6 @@
 Start from scratch: train tokenizer, create model, push to hub.
 """
 
-
 import datasets
 from transformers import (
     GPT2LMHeadModel,
@@ -62,4 +61,4 @@ generation_config = GenerationConfig(
     num_return_sequences=1,
     max_length=200,
 )
-generation_config.push_to_hub(MODEL, "generation_config.json", use_auth_token=TOKEN)
+generation_config.push_to_hub(MODEL, use_auth_token=TOKEN)

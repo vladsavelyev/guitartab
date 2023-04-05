@@ -52,9 +52,9 @@ def _tuning_to_str(tuning: int, include_octave=False):
     :param include_octave: whether to include octave in the result
     :return: text representation of the tuning
 
-    >>> text_for_tuning(49)
+    >>> _tuning_to_str(49)
     'Db'
-    >>> text_for_tuning(49, include_octave=True)
+    >>> _tuning_to_str(49, include_octave=True)
     'Db4'
     """
     octave = tuning // 12
@@ -71,7 +71,7 @@ def _parse_tuning(tuning: str) -> int:
     :param tuning: text representation of the tuning
     :return: tuning in format octave * 12 + note
 
-    >>> parse_tuning("Db4")
+    >>> _parse_tuning("Db4")
     49
     """
     octave = 4
@@ -85,18 +85,17 @@ def _parse_tuning(tuning: str) -> int:
 
 def _measures_to_str(measures: List[gp.Measure]) -> str:
     mstrs = []
-    curduration = None
+    cur_dur = None
     for measure in measures:
         mstr = ""
         beats = measure.voices[0].beats
-        if beats and beats[0].duration != curduration:
-            curduration = beats[0].duration
-            mstr += f":{curduration.value} "
+        if beats and beats[0].duration != cur_dur:
+            cur_dur = beats[0].duration
+            mstr += f":{cur_dur.value} "
         for beat in beats:
-            # TODO: handle pauses
             if not beat.notes:
                 bstr = "r"
-                if beat.duration != curduration:
+                if beat.duration != cur_dur:
                     bstr += f".{beat.duration.value}"
                 mstr += bstr + " "
                 continue
@@ -149,7 +148,7 @@ def _measures_to_str(measures: List[gp.Measure]) -> str:
                     # Finished parsing effects
                 if ef:
                     nstrs[-1] += "{" + " ".join(ef) + "}"
-                if beat.duration != curduration:
+                if beat.duration != cur_dur:
                     bdur = beat.duration.value
             if len(nstrs) > 1:
                 bstr += "(" + " ".join(nstrs) + ")"
@@ -270,7 +269,7 @@ def alphatex_to_song(tex: str) -> gp.Song:
 
 
 def _parse_track_lines(track: gp.Track, lines: List[str]):
-    curduration = gp.Duration(gp.Duration.quarter)
+    cur_dur = gp.Duration(gp.Duration.quarter)
     for mstr in " ".join(lines).strip("|").split(" | "):
         if not (mstr := mstr.strip()):
             continue
@@ -279,15 +278,15 @@ def _parse_track_lines(track: gp.Track, lines: List[str]):
         measure = track.measures[-1]
         for bstr in mstr.split(" "):
             if bstr.startswith(":"):
-                curduration = gp.Duration(int(bstr[1:]))
+                cur_dur = gp.Duration(int(bstr[1:]))
                 continue
             elif bstr.startswith("r"):
-                beat = gp.Beat(measure.voices, duration=curduration)
+                beat = gp.Beat(measure.voices, duration=cur_dur)
                 measure.voices[0].beats.append(beat)
                 if bstr.count(".") > 0:
                     beat.duration = gp.Duration(int(bstr.rsplit(".")[-1]))
                 continue
-            beat = gp.Beat(measure.voices, duration=curduration)
+            beat = gp.Beat(measure.voices, duration=cur_dur)
             measure.voices[0].beats.append(beat)
             if "*" in bstr:
                 bstr, mult = bstr.split("*")
