@@ -9,6 +9,7 @@ from transformers import (
     TrainerCallback,
     DataCollatorForLanguageModeling,
     trainer_utils,
+    PreTrainedModel,
 )
 from guitartab import load_model, MODEL, load_tokenizer, prep_dataset, TOKEN
 from generate import generate_song
@@ -54,8 +55,8 @@ if transformers.utils.is_torch_cuda_available():
         # -vsavelyev
         # https://wandb.ai/vsavelyev/guitartab-sweeps/sweeps/meecv8s2?workspace=user
         # -vsavelyev
-        per_device_train_batch_size=8,
-        per_device_eval_batch_size=8,
+        per_device_train_batch_size=4,
+        per_device_eval_batch_size=4,
         # gradient_checkpointing=True,  # 10x < mem, 40% > runtime, = loss
         # gradient_accumulation_steps=8,  # < runtime, = mem, < loss
         fp16=True,
@@ -82,17 +83,17 @@ testing_dir.mkdir(exist_ok=True)
 class MyCallback(TrainerCallback):
     def on_evaluate(self, args, state, control, **kwargs):
         if metrics := kwargs.get("metrics"):
-            model, tokenizer = kwargs["model"], kwargs["tokenizer"]
+            model: PreTrainedModel = kwargs["model"]
             loss = metrics["eval_loss"]
             print(f"Eval loss: {loss:.4f}")
             print(f"Perplexity: {math.exp(loss):.2f}")
             generate_song(
                 out_dir=testing_dir,
                 title=f"Step {state.global_step}, loss {loss:.4f}",
+                device=str(model.device),
                 model=model,
-                tokenizer=tokenizer,
-                device=args.device,
-                max_length=1000,
+                tokenizer=load_tokenizer(),
+                max_length=500,
                 num_return_sequences=1,
             )
         if state.best_metric:
@@ -111,10 +112,24 @@ trainer = Trainer(
     args=training_args,
 )
 
+
+def mem():
+    import torch
+    allocated = torch.cuda.memory_allocated()
+    max_allocated = torch.cuda.max_memory_allocated()
+    print(f"Mem: {allocated / 1024 ** 3:.2f}G, max: {max_allocated / 1024 ** 3:.2f}G")
+
+
+mem()
+
 trainer.evaluate()  # to early test if something crashes
+
+mem()
 
 # %% TRAIN
 if not DRY_RUN:
     trainer.train(resume_from_checkpoint=trainer_utils.get_last_checkpoint(save_dir))
     if TOKEN:
         trainer.save_model()  # also calls push_to_hub
+
+mem()

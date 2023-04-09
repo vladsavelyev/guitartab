@@ -26,8 +26,29 @@ BASE_MODEL = "gpt2"
 TOKEN = os.getenv("HUB_TOKEN")
 
 
-def load_model():
-    return AutoModelForCausalLM.from_pretrained(MODEL)
+def load_model(model=None):
+    model = model or AutoModelForCausalLM.from_pretrained(MODEL)
+    tokenizer = load_tokenizer()
+    model.resize_token_embeddings(len(tokenizer))
+    # Setting all parameters apart from layer norm, embedding, and head, 
+    # as non-trainable
+    for name, param in model.named_parameters():
+        if all(k not in name for k in ["ln", "wte", "wpe", "head"]):
+            param.requires_grad = False
+
+    trainable_params = 0
+    all_param = 0
+    for name, param in model.named_parameters():
+        num_params = param.numel()
+        all_param += num_params
+        if param.requires_grad:
+            trainable_params += num_params
+    print(
+        f"trainable params: {trainable_params} || "
+        f"all params: {all_param} || trainable%: "
+        f"{100 * trainable_params / all_param}"
+    )
+    return model
 
 
 def load_tokenizer():
@@ -38,7 +59,7 @@ def load_generation_config():
     return GenerationConfig.from_pretrained(MODEL, "generation_config.json")
 
 
-def prep_dataset(instrument_class=None):
+def prep_dataset(instrument_class=None, wrap_bos_eos=False):
     """
     Load dataset and prepare for training:
     - optionally filter by instrument class
@@ -70,18 +91,20 @@ def prep_dataset(instrument_class=None):
 
     dataset = dataset["train"].train_test_split(test_size=10)
 
-    # Wrap examples with BOS and EOS tokens (tokenizer wouldn't
-    # do that even if add_special_tokens is True, see
-    # https://github.com/huggingface/transformers/issues/3311)
-    dataset = dataset.map(
-        lambda b: {
-            "text": [
-                f"{tokenizer.bos_token}{x}{tokenizer.eos_token}" for x in b["text"]
-            ]
-        },
-        batched=True,
-        remove_columns=dataset["train"].column_names,
-    )
+    if wrap_bos_eos:
+        # Wrap examples with BOS and EOS tokens (tokenizer wouldn't
+        # do that even if add_special_tokens is True, see
+        # https://github.com/huggingface/transformers/issues/3311)
+        # Nor really needed as we start each track with /title
+        dataset = dataset.map(
+            lambda b: {
+                "text": [
+                    f"{tokenizer.bos_token}{x}{tokenizer.eos_token}" for x in b["text"]
+                ]
+            },
+            batched=True,
+            remove_columns=dataset["train"].column_names,
+        )
 
     return dataset.map(
         lambda b: tokenizer(

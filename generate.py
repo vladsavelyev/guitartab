@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import guitarpro as gp
-import transformers
 from transformers import (
     pipeline,
 )
@@ -9,30 +8,19 @@ from transformers import (
 from alphatex import alphatex_to_song
 from guitartab import load_model, load_tokenizer, load_generation_config
 
-SONG_TMPL = """\
-\\title "{}"
-.
-\\track
-\\instrument 34
-\\tuning G3 D3 A2 E2
-{}
-"""
-
 
 def generate_song(
     out_dir: Path,
     title: str,
+    device: str,
     model=None,
     tokenizer=None,
-    device=None,
     **kwargs,
 ):
     if model is None:
         model = load_model()
     if tokenizer is None:
         tokenizer = load_tokenizer()
-    if device is None:
-        device = "cuda" if transformers.utils.is_torch_cuda_available() else "cpu"
 
     generator = pipeline(
         "text-generation",
@@ -43,11 +31,10 @@ def generate_song(
         **kwargs,
     )
 
-    for i, result in enumerate(generator([tokenizer.bos_token])[0]):
+    for i, result in enumerate(generator([r"\title"])[0]):
         tex = result["generated_text"]
         tex = tex.replace(tokenizer.eos_token, "")
         tex = tex.rsplit("|", 1)[0]
-        tex = SONG_TMPL.format(f'{title} {i}', tex)
         print("-" * 80)
         print(tex)
         print("-" * 80)
@@ -72,5 +59,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--out-dir", type=Path, default=Path(".").resolve())
     parser.add_argument("--title", type=str, default="Untitled")
+    parser.add_argument("--device", type=str, default="cpu")
     args = parser.parse_args()
-    generate_song(args.out_dir, args.title)
+    generate_song(args.out_dir, args.title, args.device)

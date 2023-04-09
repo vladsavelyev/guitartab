@@ -5,12 +5,11 @@ Start from scratch: train tokenizer, create model, push to hub.
 import datasets
 from transformers import (
     GPT2LMHeadModel,
-    AutoConfig,
     AutoTokenizer,
     GenerationConfig,
 )
 
-from guitartab import TOKEN, MODEL, TOKENIZER, DATASET, BASE_MODEL
+from guitartab import TOKEN, MODEL, TOKENIZER, DATASET, BASE_MODEL, load_model
 
 if not TOKEN:
     raise ValueError("Cannot push to hub without HUB_TOKEN")
@@ -38,18 +37,9 @@ tokenizer.pad_token = pad_token
 tokenizer.push_to_hub(TOKENIZER, use_auth_token=TOKEN)
 
 # %% MODEL
-print(f"Initializing model {MODEL}")
-config = AutoConfig.from_pretrained(
-    BASE_MODEL,
-    vocab_size=len(tokenizer),
-    eos_token_id=tokenizer.eos_token_id,
-    bos_token_id=tokenizer.bos_token_id,
-    n_embd=96,  # smaller vocab -> smaller embedding
-    n_layer=10,
-    n_head=12,
-)
-model = GPT2LMHeadModel(config)
-print(f"Model parameters: {model.num_parameters():,}")
+print(f"Pulling {BASE_MODEL} and resizing embeddings")
+# Pulling gpt2 and resizing embeddings
+model = load_model(GPT2LMHeadModel.from_pretrained(BASE_MODEL))
 model.push_to_hub(MODEL, use_auth_token=TOKEN)
 
 generation_config = GenerationConfig(
