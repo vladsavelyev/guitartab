@@ -22,31 +22,45 @@ __all__ = ["alphatex_to_song", "song_to_alphatex", "convert_all"]
 NOTES = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
 
 
-def song_to_alphatex(song: gp.Song) -> str:
-    lines = []
-    lines.append(f'\\title "{song.title}"')
+def song_to_alphatex(song: gp.Song, split_by_track=False) -> str:
+    """
+    Convert song to alphatex. If split_by_track is True, then each track will be
+    converted as a separate song.
+    """
+    song_header_lines = []
+    song_header_lines.append(f'\\title "{song.title}"')
     if song.subtitle:
-        lines.append(f'\\subtitle "{song.subtitle}"')
-    lines.append(f"\\tempo {song.tempo}")
-    lines.append(".")
+        song_header_lines.append(f'\\subtitle "{song.subtitle}"')
+    song_header_lines.append(f"\\tempo {song.tempo}")
+    song_header_lines.append(".")
+    if not split_by_track:
+        song_lines = song_header_lines
+    else:
+        song_lines = []
     for track in song.tracks:
+        track_lines = []
         if not track.channel or not track.channel.instrument:
             logging.debug(
                 f"Skipping track without instrument: {song.title} #{track.number} "
                 f"{track.name}"
             )
             continue
-        lines.append(f"\\track")
-        lines.append(f"\\instrument {track.channel.instrument}")
+        track_lines.append(f"\\track \"Track {track.number}\"")
+        track_lines.append(f"\\instrument {track.channel.instrument}")
         if track.strings:
             tuning = [
                 _tuning_to_str(s.value, include_octave=True) for s in track.strings
             ]
-            lines.append(f"\\tuning {' '.join(tuning)}")
+            track_lines.append(f"\\tuning {' '.join(tuning)}")
         if track.fretCount:
-            lines.append(f"\\frets {track.fretCount}")
-        lines.append(_measures_to_str(track.measures))
-    return "\n".join(lines)
+            track_lines.append(f"\\frets {track.fretCount}")
+        track_lines.append(_measures_to_str(track.measures, strip_rests=split_by_track))
+        if not split_by_track:
+            song_lines.extend(track_lines)
+        else:
+            song_lines.extend(song_header_lines)
+            song_lines.extend(track_lines)
+    return "\n".join(song_lines)
 
 
 def _tuning_to_str(tuning: int, include_octave=False):
@@ -87,9 +101,19 @@ def _parse_tuning(tuning: str) -> int:
     return octave * 12 + note
 
 
-def _measures_to_str(measures: List[gp.Measure]) -> str:
+def _measures_to_str(measures: List[gp.Measure], strip_rests=False) -> str:
     mstrs = []
     cur_dur = None
+
+    if strip_rests:
+        def _empty(m):
+            return not m.voices[0].beats or not m.voices[0].beats[0].notes
+
+        # stripping empty measures at the start
+        measures = itertools.dropwhile(_empty, measures)
+        # stripping empty measures at the end
+        measures = reversed(list(itertools.dropwhile(_empty, reversed(list(measures)))))
+
     for measure in measures:
         mstr = ""
         beats = measure.voices[0].beats
@@ -412,6 +436,7 @@ def _fix_path(path: Path) -> Path:
     Slugify file name.
     """
     path = str(path)
+    path = re.sub(r" \(\d+\).tex", "", path)
     if re.search(r"[а-яА-Я]", path):
         path = transliterate.translit(path, "ru", reversed=True)
     path = re.sub(r"\s+", "_", path)  # replace whitespaces
@@ -419,22 +444,17 @@ def _fix_path(path: Path) -> Path:
     return Path(path)
 
 
-async def convert_all():
+async def convert_all(src_dir: Path, dst_dir: Path, split_by_track=False):
     """
     Convert all GP files in a directory to AlphaTex.
     """
-    src_path = Path(sys.argv[1])
-    dst_path = Path(sys.argv[2])
-    dst_path.mkdir(exist_ok=True)
+    dst_dir.mkdir(exist_ok=True)
 
-    paths = list(src_path.glob("**/*.gp[3-5]"))
+    paths = list(src_dir.glob("**/*.gp[3-5]"))
     logging.info(f"Found {len(paths)} GuitarPro files")
 
     async def _convert_one(path):
-        song_name = path.stem
-        song_name = re.sub(r"\(\d+\)", "", song_name).strip()
-
-        out_path = dst_path / path.relative_to(src_path).with_suffix(".tex")
+        out_path = dst_dir / path.relative_to(src_dir).with_suffix(".tex")
         out_path = _fix_path(out_path)
         if out_path.exists():
             return
@@ -448,7 +468,7 @@ async def convert_all():
             logging.warning(f"WARNING: failed to parse {path}: {e}")
             return
         try:
-            tex = song_to_alphatex(song)
+            tex = song_to_alphatex(song, split_by_track=split_by_track)
         except Exception as e:
             logging.warning(f"WARNING: failed to convert {path} to alphaTex: {e}")
             return
@@ -460,4 +480,11 @@ async def convert_all():
 
 
 if __name__ == "__main__":
-    asyncio.run(convert_all())
+    src_dir = Path(sys.argv[1])
+    dst_dir = Path(sys.argv[2])
+    asyncio.run(
+        convert_all(
+            src_dir, dst_dir,
+            split_by_track=len(sys.argv) > 3 and sys.argv[3] == "--split"
+            )
+        )
