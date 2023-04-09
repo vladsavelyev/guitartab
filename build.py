@@ -34,7 +34,7 @@ tokenizer = base_tokenizer.train_new_from_iterator(
     vocab_size=500,
     new_special_tokens=[pad_token],
 )
-tokenizer.pad_token = "<|pad|>"
+tokenizer.pad_token = pad_token
 tokenizer.push_to_hub(TOKENIZER, use_auth_token=TOKEN)
 
 # %% MODEL

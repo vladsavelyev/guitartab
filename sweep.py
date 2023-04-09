@@ -29,7 +29,7 @@ sweep_config = {
     },
 }
 
-sweep_id = wandb.sweep(sweep_config, project=f"{MODEL}_sweeps")
+sweep_id = wandb.sweep(sweep_config, project=f"{MODEL.strip('/')[1]}_sweeps")
 
 sweep_train_set = dataset["train"].train_test_split(test_size=640)["test"]
 
